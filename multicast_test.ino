@@ -10,7 +10,7 @@
 // const char* ssid = "Get off my wlan";  //  your network SSID (name)
 // const char* pass = "secretwlanpass";       // your network password
 
-
+mdns::MDns my_mdns;
 
 void setup()
 {
@@ -38,14 +38,14 @@ void setup()
   printWifiStatus();
 
   Serial.println("Connected to wifi");
-  mdns::setup();
+  
 }
 
 
 
 void loop()
 {
-  mdns::GetMDnsPacket();
+  my_mdns.Check();
 }
 
 void printWifiStatus() {
