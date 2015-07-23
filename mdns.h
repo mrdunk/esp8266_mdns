@@ -5,8 +5,10 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 
-#define MAX_MDNS_NAME_LEN 256
+#define DEBUG_OUTPUT
+#define DEBUG_RAW
 
+#define MAX_MDNS_NAME_LEN 256
 
 namespace mdns{
 
@@ -29,20 +31,33 @@ struct Answer{
   unsigned int rrclass;
   unsigned long int rrttl;
   bool rrset;
-
+  bool valid;
+  
   void Display();
 };
 
 class MDns {
  public:
-  MDns();
+  MDns() : init(false), p_query_function_(NULL), p_answer_function_(NULL) {};
+  
+  MDns(void(*p_query_function)(struct Query), void(*p_answer_function)(struct Answer)) :
+      p_query_function_(p_query_function), p_answer_function_(p_answer_function) {};
+      
   bool Check();
+  void Display();
  private:
   struct Query Parse_Query();
   struct Answer Parse_Answer();
   void DisplayRawPacket();
 
+  // Whether UDP socket has not yet been initialised. 
   bool init;
+
+  // Pointer to function that gets called for every incoming query.
+  void(*p_query_function_)(struct Query);
+
+  // Pointer to function that gets called for every incoming answer.
+  void(*p_answer_function_)(struct Answer);
   
   unsigned int data_size;
   unsigned int buffer_pointer;  

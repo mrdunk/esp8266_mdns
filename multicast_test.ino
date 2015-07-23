@@ -10,6 +10,15 @@
 // const char* ssid = "Get off my wlan";  //  your network SSID (name)
 // const char* pass = "secretwlanpass";       // your network password
 
+void queryCallback(mdns::Query query){
+  query.Display();
+}
+
+void answerCallback(mdns::Answer answer){
+  answer.Display();
+}
+
+//mdns::MDns my_mdns(queryCallback, answerCallback);
 mdns::MDns my_mdns;
 
 void setup()
