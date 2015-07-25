@@ -48,10 +48,10 @@ bool MDns::Check() {
     // Number of incoming answers.
     answer_count = (data_buffer[6] << 8) + data_buffer[7];
 
-    // Number of incoming Name Server resource records. (TODO is this used in mDNS?)
+    // Number of incoming Name Server resource records.
     ns_count = (data_buffer[8] << 8) + data_buffer[9];
 
-    // Number of incoming Additional resource records. (TODO is this used in mDNS?)
+    // Number of incoming Additional resource records.
     ar_count = (data_buffer[10] << 8) + data_buffer[11];
 
 #ifdef DEBUG_OUTPUT
@@ -96,10 +96,53 @@ bool MDns::Check() {
   return false;
 }
 
+void MDns::Clear(){
+    data_buffer[0] = 0;     // Query ID field which is unused in mDNS.
+    data_buffer[1] = 0;     // Query ID field which is unused in mDNS.
+    data_buffer[2] = 0;     // 0b00000000 for Query, 0b10000000 for Answer.
+    data_buffer[3] = 0;     // DNS flags which are mostly unused in mDNS.
+    data_buffer[4] = 0;     // Number of queries.
+    data_buffer[5] = 0;     // Number of queries.
+    data_buffer[6] = 0;     // Number of answers.
+    data_buffer[7] = 0;     // Number of answers.
+    data_buffer[8] = 0;     // Number of Server esource records.
+    data_buffer[9] = 0;     // Number of Server esource records.
+    data_buffer[10] = 0;     // Number of Additional resource records.
+    data_buffer[11] = 0;     // Number of Additional resource records.
+
+    data_size = 11;
+    buffer_pointer = 0;
+    type = 0;
+    query_count = 0;
+    answer_count = 0;
+    ns_count = 0;
+    ar_count = 0;
+}
+
+void MDns::AddQuery(Query query){
+  data_buffer[2] = 0;     // 0b00000000 for Query, 0b10000000 for Answer.
+  query_count++;
+  type = 1;
+
+  // TODO: Create DNS name buffer from qname.
+  
+}
+
+void MDns::Send(){
+  Serial.println("Sending UDP multicast packet");
+  Udp.beginPacketMulticast(IPAddress(224, 0, 0, 251), 5353, WiFi.localIP());
+  //Udp.write("UDP Multicast packet sent by ");
+  //Udp.println(WiFi.localIP());
+  Udp.write(data_buffer, data_size);
+  Udp.endPacket();
+}
+
 void MDns::Display() {
   Serial.println();
   Serial.print("query size: ");
-  Serial.println(data_size);
+  Serial.print(data_size);
+  Serial.print("  ");
+  Serial.println(data_size, HEX);
   Serial.print(" TYPE: ");
   Serial.print(type);
   Serial.print("      QUERY_COUNT: ");
@@ -116,7 +159,7 @@ struct Query MDns::Parse_Query() {
   struct Query return_value;
   return_value.buffer_pointer = buffer_pointer;
 
-  buffer_pointer = nameFromDnsPointer(return_value.fqdn_buffer, 0, data_buffer, buffer_pointer);
+  buffer_pointer = nameFromDnsPointer(return_value.qname_buffer, 0, MAX_MDNS_NAME_LEN, data_buffer, buffer_pointer);
 
   byte qtype_0 = data_buffer[buffer_pointer++];
   byte qtype_1 = data_buffer[buffer_pointer++];
@@ -146,7 +189,7 @@ struct Answer MDns::Parse_Answer() {
   struct Answer return_value;
   return_value.buffer_pointer = buffer_pointer;
 
-  buffer_pointer = nameFromDnsPointer(return_value.fqdn_buffer, 0, data_buffer, buffer_pointer);
+  buffer_pointer = nameFromDnsPointer(return_value.name_buffer, 0, MAX_MDNS_NAME_LEN, data_buffer, buffer_pointer);
 
   return_value.rrtype = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
 
@@ -162,7 +205,7 @@ struct Answer MDns::Parse_Answer() {
 
   int rdlength = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
 
-  buffer_pointer = DisplayType(return_value.rrtype, rdlength, return_value.result_buffer, data_buffer, buffer_pointer);
+  buffer_pointer = return_value.PopulateResultBuffer(data_buffer, buffer_pointer, rdlength);
 
   if (buffer_pointer > data_size) {
     // We've over-run the returned data.
@@ -204,78 +247,118 @@ void MDns::DisplayRawPacket() {
   }
 }
 
-int nameFromDnsPointer(char* p_fqdn_buffer, int fqdn_buffer_pos,
+int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, int name_buffer_len,
                        byte* p_packet_buffer, int packet_buffer_pos) {
 
-  if (fqdn_buffer_pos > 0 && *(p_fqdn_buffer - 1 + fqdn_buffer_pos) == '\0') {
+  if (name_buffer_pos > 0 && *(p_name_buffer - 1 + name_buffer_pos) == '\0') {
     // Since we are adding more to an already populated buffer,
     // replace the trailing EOL with the FQDN seperator.
-    *(p_fqdn_buffer - 1 + fqdn_buffer_pos) = '.';
+    *(p_name_buffer - 1 + name_buffer_pos) = '.';
   }
 
   if (*(p_packet_buffer + packet_buffer_pos) < 0xC0) {
     // Since the first 2 bits are not set,
     // this is the start of a name section.
     // http://www.tcpipguide.com/free/t_DNSNameNotationandMessageCompressionTechnique.htm
+    
     int word_len = *(p_packet_buffer + packet_buffer_pos++);
     for (int l = 0; l < word_len; l++) {
-      if (fqdn_buffer_pos >= MAX_MDNS_NAME_LEN) {
+      if (name_buffer_pos >= MAX_MDNS_NAME_LEN) {
         return packet_buffer_pos;
       }
-      *(p_fqdn_buffer + fqdn_buffer_pos++) = *(p_packet_buffer + packet_buffer_pos++);
+      if(name_buffer_pos < name_buffer_len){
+        // TODO: test limiting buffer write works here.
+        *(p_name_buffer + name_buffer_pos++) = *(p_packet_buffer + packet_buffer_pos++);
+        *(p_name_buffer + name_buffer_pos) = '\0';
+      } else {
+        packet_buffer_pos++;
+      }
     }
-    *(p_fqdn_buffer + fqdn_buffer_pos++) = '\0';
+
+    //*(p_qname_buffer + qname_buffer_pos++) = '\0';
+
     if (*(p_packet_buffer + packet_buffer_pos) > 0) {
+      // Next word.
       packet_buffer_pos =
-        nameFromDnsPointer(p_fqdn_buffer, fqdn_buffer_pos, p_packet_buffer, packet_buffer_pos);
+        nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len - name_buffer_pos, p_packet_buffer, packet_buffer_pos);
     } else {
+      // End of string.
       packet_buffer_pos++;
     }
   } else {
     // Message Compression used. Next 2 bytes are a pointer to the actual name section.
     int pointer = (*(p_packet_buffer + packet_buffer_pos++) - 0xC0) << 8;
     pointer += *(p_packet_buffer + packet_buffer_pos++);
-    nameFromDnsPointer(p_fqdn_buffer, fqdn_buffer_pos, p_packet_buffer, pointer);
+    nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len - name_buffer_pos, p_packet_buffer, pointer);
   }
   return packet_buffer_pos;
 }
 
-int DisplayType(unsigned int type, int data_len, char* p_buffer,
-                byte* p_packet_buffer, int packet_buffer_pos) {
-  switch (type) {
-    case 1:
+void Query::Display() {
+  Serial.print("question  0x");
+  Serial.println(buffer_pointer, HEX);
+  if (!valid) {
+    Serial.println(" **ERROR**");
+  }
+  Serial.print(" QNAME:    ");
+  Serial.print(qname_buffer);
+  Serial.print("      QTYPE:  0x");
+  Serial.print(qtype, HEX);
+  Serial.print("      QCLASS: 0x");
+  Serial.print(qclass, HEX);
+  Serial.print("      Unicast Response: ");
+  Serial.println(unicast_response);
+}
+
+int Answer::PopulateResultBuffer(byte* p_packet_buffer, int packet_buffer_pos, int packet_buffer_len) {
+  switch (rrtype) {
+    case 0x1:
       // A. Returns a 32-bit IPv4 address
-      sprintf(p_buffer, "%u.%u.%u.%u", p_packet_buffer[packet_buffer_pos++], p_packet_buffer[packet_buffer_pos++]
-              , p_packet_buffer[packet_buffer_pos++], p_packet_buffer[packet_buffer_pos++]);
+      sprintf(rdata_buffer, "%u.%u.%u.%u",
+              p_packet_buffer[packet_buffer_pos++], p_packet_buffer[packet_buffer_pos++],
+              p_packet_buffer[packet_buffer_pos++], p_packet_buffer[packet_buffer_pos++]);
       break;
     case 0xC:
       // PTR.  Pointer to a canonical name.
-      packet_buffer_pos = nameFromDnsPointer(p_buffer, 0, p_packet_buffer, packet_buffer_pos);
+      packet_buffer_pos = nameFromDnsPointer(rdata_buffer, 0, MAX_MDNS_NAME_LEN, p_packet_buffer, packet_buffer_pos);
       break;
     case 0xD:
       // HINFO. host information
-      packet_buffer_pos = nameFromDnsPointer(p_buffer, 0, p_packet_buffer, packet_buffer_pos);
+      // TODO: move this text parsing to it's own function. check for writing outside rdata_buffer.
+      {
+        int i;
+        for (i = 0; i < packet_buffer_len; i++) {
+          rdata_buffer[i] = p_packet_buffer[packet_buffer_pos++];
+        }
+        rdata_buffer[i] = '\0';
+      }
       break;
     case 0x10:
       // TXT.  Originally for arbitrary human-readable text in a DNS record.
-      for (int i = 0; i < data_len; i++) {
-        p_buffer[packet_buffer_pos++] = p_packet_buffer[packet_buffer_pos++];
+      {
+        int i;
+        for (i = 0; i < packet_buffer_len; i++) {
+          rdata_buffer[i] = p_packet_buffer[packet_buffer_pos++];
+        }
+        rdata_buffer[i] = '\0';
       }
       break;
     case 0x1C:
       // AAAA.  Returns a 128-bit IPv6 address.
-      for (int i = 0; i < data_len; i++) {
-        sprintf(p_buffer, "%02X:", p_packet_buffer[packet_buffer_pos++]);
-        p_buffer += 3;
+      char* p_rdata_buffer;
+      p_rdata_buffer = rdata_buffer;
+      for (int i = 0; i < packet_buffer_len; i++) {
+        sprintf(p_rdata_buffer, "%02X:", p_packet_buffer[packet_buffer_pos++]);
+        p_rdata_buffer += 3;
       }
       break;
     case 0x21:
-      // SRV. Server Selection.
+    // SRV. Server Selection.
     default:
       int buffer_pos = 0;
-      for (int i = 0; i < data_len; i++) {
+      for (int i = 0; i < packet_buffer_len; i++) {
         if (buffer_pos < MAX_MDNS_NAME_LEN - 3) {
-          sprintf(p_buffer + buffer_pos, "%02X ", p_packet_buffer[packet_buffer_pos++]);
+          sprintf(rdata_buffer + buffer_pos, "%02X ", p_packet_buffer[packet_buffer_pos++]);
         } else {
           packet_buffer_pos++;
         }
@@ -286,53 +369,25 @@ int DisplayType(unsigned int type, int data_len, char* p_buffer,
   return packet_buffer_pos;
 }
 
-void DisplayClass(unsigned int ip_class) {
-  if (ip_class == 1) {
-    Serial.print("Internet (IN)");
-  } else {
-    Serial.print("Unknown");
-  }
-}
-
-
-void Query::Display() {
-  Serial.print("question  0x");
-  Serial.println(buffer_pointer, HEX);
-  if (valid) {
-    Serial.print(" QNAME:    ");
-    Serial.print(fqdn_buffer);
-    Serial.print("      QTYPE:  0x");
-    Serial.print(qtype, HEX);
-    Serial.print("      QCLASS: 0x");
-    Serial.print(qclass, HEX);
-    Serial.print("      Unicast Response: ");
-    Serial.println(unicast_response);
-  } else {
-    Serial.println(" **ERROR**");
-  }
-}
-
 void Answer::Display() {
-  //if (strncmp(fqdn_buffer, "_mqtt.", 6) == 0 || strncmp(fqdn_buffer, "twinkle", 7) == 0) {
+  //if (strncmp(qname_buffer, "_mqtt.", 6) == 0 || strncmp(qname_buffer, "twinkle", 7) == 0) {
   Serial.print("answer  0x");
   Serial.println(buffer_pointer, HEX);
-  if (valid) {
-    Serial.print(" RRNAME:    ");
-    Serial.print(fqdn_buffer);
-    Serial.print("      RRTYPE:  0x");
-    Serial.print(rrtype, HEX);
-    Serial.print("      RRCLASS: 0x");
-    Serial.print(rrclass, HEX);
-    Serial.print("      RRTTL: ");
-    Serial.print(rrttl);
-    Serial.print("      RRSET: ");
-    Serial.println(rrset);
-    Serial.print(" RRDATA:    ");
-    Serial.println(result_buffer);
-  } else {
+  if (!valid) {
     Serial.println(" **ERROR**");
   }
-  //}
+  Serial.print(" RRNAME:    ");
+  Serial.print(name_buffer);
+  Serial.print("      RRTYPE:  0x");
+  Serial.print(rrtype, HEX);
+  Serial.print("      RRCLASS: 0x");
+  Serial.print(rrclass, HEX);
+  Serial.print("      RRTTL: ");
+  Serial.print(rrttl);
+  Serial.print("      RRSET: ");
+  Serial.println(rrset);
+  Serial.print(" RRDATA:    ");
+  Serial.println(rdata_buffer);
 }
 
 } // namespace mdns
