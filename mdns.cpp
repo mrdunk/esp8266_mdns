@@ -96,39 +96,39 @@ bool MDns::Check() {
   return false;
 }
 
-void MDns::Clear(){
-    data_buffer[0] = 0;     // Query ID field which is unused in mDNS.
-    data_buffer[1] = 0;     // Query ID field which is unused in mDNS.
-    data_buffer[2] = 0;     // 0b00000000 for Query, 0b10000000 for Answer.
-    data_buffer[3] = 0;     // DNS flags which are mostly unused in mDNS.
-    data_buffer[4] = 0;     // Number of queries.
-    data_buffer[5] = 0;     // Number of queries.
-    data_buffer[6] = 0;     // Number of answers.
-    data_buffer[7] = 0;     // Number of answers.
-    data_buffer[8] = 0;     // Number of Server esource records.
-    data_buffer[9] = 0;     // Number of Server esource records.
-    data_buffer[10] = 0;     // Number of Additional resource records.
-    data_buffer[11] = 0;     // Number of Additional resource records.
+void MDns::Clear() {
+  data_buffer[0] = 0;     // Query ID field which is unused in mDNS.
+  data_buffer[1] = 0;     // Query ID field which is unused in mDNS.
+  data_buffer[2] = 0;     // 0b00000000 for Query, 0b10000000 for Answer.
+  data_buffer[3] = 0;     // DNS flags which are mostly unused in mDNS.
+  data_buffer[4] = 0;     // Number of queries.
+  data_buffer[5] = 0;     // Number of queries.
+  data_buffer[6] = 0;     // Number of answers.
+  data_buffer[7] = 0;     // Number of answers.
+  data_buffer[8] = 0;     // Number of Server esource records.
+  data_buffer[9] = 0;     // Number of Server esource records.
+  data_buffer[10] = 0;     // Number of Additional resource records.
+  data_buffer[11] = 0;     // Number of Additional resource records.
 
-    data_size = 11;
-    buffer_pointer = 0;
-    type = 0;
-    query_count = 0;
-    answer_count = 0;
-    ns_count = 0;
-    ar_count = 0;
+  data_size = 11;
+  buffer_pointer = 0;
+  type = 0;
+  query_count = 0;
+  answer_count = 0;
+  ns_count = 0;
+  ar_count = 0;
 }
 
-void MDns::AddQuery(Query query){
+void MDns::AddQuery(Query query) {
   data_buffer[2] = 0;     // 0b00000000 for Query, 0b10000000 for Answer.
   query_count++;
   type = 1;
 
   // TODO: Create DNS name buffer from qname.
-  
+
 }
 
-void MDns::Send(){
+void MDns::Send() {
   Serial.println("Sending UDP multicast packet");
   Udp.beginPacketMulticast(IPAddress(224, 0, 0, 251), 5353, WiFi.localIP());
   //Udp.write("UDP Multicast packet sent by ");
@@ -174,12 +174,18 @@ struct Query MDns::Parse_Query() {
   return_value.valid = true;
   if (return_value.qclass != 0xFF && return_value.qclass != 0x01) {
     // QCLASS is not ANY (0xFF) or INternet (0x01).
+    Serial.print(" **ERROR QCLASS** ");
+    Serial.println(return_value.qclass, HEX);
     return_value.valid = false;
   }
 
   if (buffer_pointer > data_size) {
     // We've over-run the returned data.
     // Something has gone wrong receiving or parseing the data.
+    Serial.print(" **ERROR size** ");
+    Serial.print(buffer_pointer, HEX);
+    Serial.print(" ");
+    Serial.println(data_size, HEX);
     return_value.valid = false;
   }
   return return_value;
@@ -207,9 +213,14 @@ struct Answer MDns::Parse_Answer() {
 
   buffer_pointer = return_value.PopulateResultBuffer(data_buffer, buffer_pointer, rdlength);
 
+  return_value.valid = true;
   if (buffer_pointer > data_size) {
     // We've over-run the returned data.
     // Something has gone wrong receiving or parseing the data.
+    Serial.print(" **ERROR size** ");
+    Serial.print(buffer_pointer, HEX);
+    Serial.print(" ");
+    Serial.println(data_size, HEX);
     return_value.valid = false;
   }
   return return_value;
@@ -247,40 +258,53 @@ void MDns::DisplayRawPacket() {
   }
 }
 
+bool writeToBuffer(byte value, char* p_name_buffer, int* p_name_buffer_pos, int name_buffer_len) {
+  if (*p_name_buffer_pos < name_buffer_len - 1) {
+    *(p_name_buffer + *p_name_buffer_pos) = value;
+    (*p_name_buffer_pos)++;
+    *(p_name_buffer + *p_name_buffer_pos) = '\0';
+    return true;
+  }
+  (*p_name_buffer_pos)++;
+  return false;
+}
+
+int parseText(char* data_buffer, int data_buffer_len, int data_len,
+              byte* p_packet_buffer, int packet_buffer_pos) {
+  int i, data_buffer_pos = 0;
+  for (i = 0; i < data_len; i++) {
+    writeToBuffer(p_packet_buffer[packet_buffer_pos++], data_buffer, &data_buffer_pos, data_buffer_len);
+  }
+  data_buffer[data_buffer_pos] = '\0';
+  return packet_buffer_pos;
+}
+
 int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, int name_buffer_len,
                        byte* p_packet_buffer, int packet_buffer_pos) {
 
-  if (name_buffer_pos > 0 && *(p_name_buffer - 1 + name_buffer_pos) == '\0') {
+  if ((name_buffer_pos > 0) ) {
     // Since we are adding more to an already populated buffer,
     // replace the trailing EOL with the FQDN seperator.
-    *(p_name_buffer - 1 + name_buffer_pos) = '.';
+    name_buffer_pos--;
+    writeToBuffer('*', p_name_buffer, &name_buffer_pos, name_buffer_len);
   }
 
   if (*(p_packet_buffer + packet_buffer_pos) < 0xC0) {
     // Since the first 2 bits are not set,
     // this is the start of a name section.
     // http://www.tcpipguide.com/free/t_DNSNameNotationandMessageCompressionTechnique.htm
-    
+
     int word_len = *(p_packet_buffer + packet_buffer_pos++);
     for (int l = 0; l < word_len; l++) {
-      if (name_buffer_pos >= MAX_MDNS_NAME_LEN) {
-        return packet_buffer_pos;
-      }
-      if(name_buffer_pos < name_buffer_len){
-        // TODO: test limiting buffer write works here.
-        *(p_name_buffer + name_buffer_pos++) = *(p_packet_buffer + packet_buffer_pos++);
-        *(p_name_buffer + name_buffer_pos) = '\0';
-      } else {
-        packet_buffer_pos++;
-      }
+      writeToBuffer(*(p_packet_buffer + packet_buffer_pos++), p_name_buffer, &name_buffer_pos, name_buffer_len);
     }
 
-    //*(p_qname_buffer + qname_buffer_pos++) = '\0';
+    writeToBuffer('\0', p_name_buffer, &name_buffer_pos, name_buffer_len);
 
     if (*(p_packet_buffer + packet_buffer_pos) > 0) {
       // Next word.
       packet_buffer_pos =
-        nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len - name_buffer_pos, p_packet_buffer, packet_buffer_pos);
+        nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len, p_packet_buffer, packet_buffer_pos);
     } else {
       // End of string.
       packet_buffer_pos++;
@@ -289,7 +313,7 @@ int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, int name_buffer
     // Message Compression used. Next 2 bytes are a pointer to the actual name section.
     int pointer = (*(p_packet_buffer + packet_buffer_pos++) - 0xC0) << 8;
     pointer += *(p_packet_buffer + packet_buffer_pos++);
-    nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len - name_buffer_pos, p_packet_buffer, pointer);
+    nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len, p_packet_buffer, pointer);
   }
   return packet_buffer_pos;
 }
@@ -310,59 +334,77 @@ void Query::Display() {
   Serial.println(unicast_response);
 }
 
-int Answer::PopulateResultBuffer(byte* p_packet_buffer, int packet_buffer_pos, int packet_buffer_len) {
+int Answer::PopulateResultBuffer(byte* p_packet_buffer, int packet_buffer_pos, int result_data_len) {
   switch (rrtype) {
     case 0x1:
       // A. Returns a 32-bit IPv4 address
-      sprintf(rdata_buffer, "%u.%u.%u.%u",
-              p_packet_buffer[packet_buffer_pos++], p_packet_buffer[packet_buffer_pos++],
-              p_packet_buffer[packet_buffer_pos++], p_packet_buffer[packet_buffer_pos++]);
+      if (MAX_MDNS_NAME_LEN >= 16) {
+        sprintf(rdata_buffer, "%u.%u.%u.%u",
+                p_packet_buffer[packet_buffer_pos++], p_packet_buffer[packet_buffer_pos++],
+                p_packet_buffer[packet_buffer_pos++], p_packet_buffer[packet_buffer_pos++]);
+      } else {
+        sprintf(rdata_buffer, "ipv4");
+        packet_buffer_pos += 4;
+      }
       break;
     case 0xC:
       // PTR.  Pointer to a canonical name.
-      packet_buffer_pos = nameFromDnsPointer(rdata_buffer, 0, MAX_MDNS_NAME_LEN, p_packet_buffer, packet_buffer_pos);
+      packet_buffer_pos = nameFromDnsPointer(rdata_buffer, 0, MAX_MDNS_NAME_LEN,
+                                             p_packet_buffer, packet_buffer_pos);
       break;
     case 0xD:
       // HINFO. host information
       // TODO: move this text parsing to it's own function. check for writing outside rdata_buffer.
-      {
+      /*{
         int i;
         for (i = 0; i < packet_buffer_len; i++) {
           rdata_buffer[i] = p_packet_buffer[packet_buffer_pos++];
         }
         rdata_buffer[i] = '\0';
-      }
+      }*/
+      packet_buffer_pos = parseText(rdata_buffer, MAX_MDNS_NAME_LEN, result_data_len,
+                                    p_packet_buffer, packet_buffer_pos);
       break;
     case 0x10:
       // TXT.  Originally for arbitrary human-readable text in a DNS record.
-      {
+      /*{
         int i;
         for (i = 0; i < packet_buffer_len; i++) {
           rdata_buffer[i] = p_packet_buffer[packet_buffer_pos++];
         }
         rdata_buffer[i] = '\0';
-      }
+      }*/
+      packet_buffer_pos =
+        parseText(rdata_buffer, MAX_MDNS_NAME_LEN, result_data_len,
+                  p_packet_buffer, packet_buffer_pos);
       break;
     case 0x1C:
       // AAAA.  Returns a 128-bit IPv6 address.
-      char* p_rdata_buffer;
-      p_rdata_buffer = rdata_buffer;
-      for (int i = 0; i < packet_buffer_len; i++) {
-        sprintf(p_rdata_buffer, "%02X:", p_packet_buffer[packet_buffer_pos++]);
-        p_rdata_buffer += 3;
+      {
+        int buffer_pos = 0;
+        for (int i = 0; i < result_data_len; i++) {
+          if (buffer_pos < MAX_MDNS_NAME_LEN - 3) {
+            sprintf(rdata_buffer + buffer_pos, "%02X:", p_packet_buffer[packet_buffer_pos++]);
+          } else {
+            packet_buffer_pos++;
+          }
+          buffer_pos += 3;
+        }
       }
       break;
     case 0x21:
     // SRV. Server Selection.
     default:
-      int buffer_pos = 0;
-      for (int i = 0; i < packet_buffer_len; i++) {
-        if (buffer_pos < MAX_MDNS_NAME_LEN - 3) {
-          sprintf(rdata_buffer + buffer_pos, "%02X ", p_packet_buffer[packet_buffer_pos++]);
-        } else {
-          packet_buffer_pos++;
+      {
+        int buffer_pos = 0;
+        for (int i = 0; i < result_data_len; i++) {
+          if (buffer_pos < MAX_MDNS_NAME_LEN - 3) {
+            sprintf(rdata_buffer + buffer_pos, "%02X ", p_packet_buffer[packet_buffer_pos++]);
+          } else {
+            packet_buffer_pos++;
+          }
+          buffer_pos += 3;
         }
-        buffer_pos += 3;
       }
       break;
   }
