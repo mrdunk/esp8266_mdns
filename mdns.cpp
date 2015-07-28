@@ -110,8 +110,8 @@ void MDns::Clear() {
   data_buffer[10] = 0;     // Number of Additional resource records.
   data_buffer[11] = 0;     // Number of Additional resource records.
 
-  data_size = 11;
-  buffer_pointer = 0;
+  data_size = 12;
+  buffer_pointer = 12;  // First byte of first Query/Record.
   type = 0;
   query_count = 0;
   answer_count = 0;
@@ -120,12 +120,44 @@ void MDns::Clear() {
 }
 
 void MDns::AddQuery(Query query) {
+  if(answer_count || ns_count || ar_count){
+    Serial.println(" ERROR. Resource records inclued before Queries.");
+  }
   data_buffer[2] = 0;     // 0b00000000 for Query, 0b10000000 for Answer.
-  query_count++;
   type = 1;
+  ++query_count;
+  data_buffer[4] = (query_count & 0xFF00) >> 8;
+  data_buffer[5] = query_count & 0xFF;
 
-  // TODO: Create DNS name buffer from qname.
+  // Create DNS name buffer from qname.
+  // TODO: This section does not match the mDNS spec.
+  // It does not re-use strings from previous questions.
+  int word_start = 0, word_end = 0;
+  do{
+    if(query.qname_buffer[word_end] == '.' or query.qname_buffer[word_end] == '\0'){
+      int word_length = word_end - word_start;
+      data_buffer[buffer_pointer++] = (unsigned byte)word_length;
+      for(int i = word_start; i < word_end; ++i){
+        data_buffer[buffer_pointer++] = query.qname_buffer[i];
+      }
+      word_end++;  // Skip the '.' charicter.
+      word_start = word_end;
+    }
+    word_end++;
+  } while(query.qname_buffer[word_start] != '\0');
+  data_buffer[buffer_pointer++] = '\0';  // End of qname.
 
+  // The rest of the flags.
+  data_buffer[buffer_pointer++] = (query.qtype & 0xFF00) >> 8;
+  data_buffer[buffer_pointer++] = query.qtype & 0xFF;
+  unsigned int qclass = 0;
+  if(query.unicast_response){
+    qclass = 0b1000000000000000;
+  }
+  qclass += query.qclass;
+  data_buffer[buffer_pointer++] = (qclass & 0xFF00) >> 8;
+  data_buffer[buffer_pointer++] = qclass & 0xFF;
+  data_size = buffer_pointer;
 }
 
 void MDns::Send() {
@@ -286,7 +318,7 @@ int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, int name_buffer
     // Since we are adding more to an already populated buffer,
     // replace the trailing EOL with the FQDN seperator.
     name_buffer_pos--;
-    writeToBuffer('*', p_name_buffer, &name_buffer_pos, name_buffer_len);
+    writeToBuffer('.', p_name_buffer, &name_buffer_pos, name_buffer_len);
   }
 
   if (*(p_packet_buffer + packet_buffer_pos) < 0xC0) {
@@ -325,8 +357,8 @@ void Query::Display() {
     Serial.println(" **ERROR**");
   }
   Serial.print(" QNAME:    ");
-  Serial.print(qname_buffer);
-  Serial.print("      QTYPE:  0x");
+  Serial.println(qname_buffer);
+  Serial.print(" QTYPE:  0x");
   Serial.print(qtype, HEX);
   Serial.print("      QCLASS: 0x");
   Serial.print(qclass, HEX);
@@ -354,29 +386,13 @@ int Answer::PopulateResultBuffer(byte* p_packet_buffer, int packet_buffer_pos, i
       break;
     case 0xD:
       // HINFO. host information
-      // TODO: move this text parsing to it's own function. check for writing outside rdata_buffer.
-      /*{
-        int i;
-        for (i = 0; i < packet_buffer_len; i++) {
-          rdata_buffer[i] = p_packet_buffer[packet_buffer_pos++];
-        }
-        rdata_buffer[i] = '\0';
-      }*/
       packet_buffer_pos = parseText(rdata_buffer, MAX_MDNS_NAME_LEN, result_data_len,
                                     p_packet_buffer, packet_buffer_pos);
       break;
     case 0x10:
       // TXT.  Originally for arbitrary human-readable text in a DNS record.
-      /*{
-        int i;
-        for (i = 0; i < packet_buffer_len; i++) {
-          rdata_buffer[i] = p_packet_buffer[packet_buffer_pos++];
-        }
-        rdata_buffer[i] = '\0';
-      }*/
-      packet_buffer_pos =
-        parseText(rdata_buffer, MAX_MDNS_NAME_LEN, result_data_len,
-                  p_packet_buffer, packet_buffer_pos);
+      packet_buffer_pos = parseText(rdata_buffer, MAX_MDNS_NAME_LEN, result_data_len,
+                                    p_packet_buffer, packet_buffer_pos);
       break;
     case 0x1C:
       // AAAA.  Returns a 128-bit IPv6 address.
@@ -419,8 +435,8 @@ void Answer::Display() {
     Serial.println(" **ERROR**");
   }
   Serial.print(" RRNAME:    ");
-  Serial.print(name_buffer);
-  Serial.print("      RRTYPE:  0x");
+  Serial.println(name_buffer);
+  Serial.print(" RRTYPE:  0x");
   Serial.print(rrtype, HEX);
   Serial.print("      RRCLASS: 0x");
   Serial.print(rrclass, HEX);

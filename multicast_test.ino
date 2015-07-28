@@ -43,11 +43,20 @@ void setup()
   }
   Serial.println();
 
-
   printWifiStatus();
 
   Serial.println("Connected to wifi");
-  
+
+
+  my_mdns.Clear();
+  struct mdns::Query query_mqtt;
+  strncpy(query_mqtt.qname_buffer, "_mqtt._tcp.local", MAX_MDNS_NAME_LEN);
+  query_mqtt.qtype = 0xFF;
+  query_mqtt.qclass = 1;
+  query_mqtt.unicast_response = 0;
+  query_mqtt.valid = 1;
+  my_mdns.AddQuery(query_mqtt);
+  my_mdns.Send();
 }
 
 
