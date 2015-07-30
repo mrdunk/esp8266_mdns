@@ -119,9 +119,33 @@ void MDns::Clear() {
   ar_count = 0;
 }
 
+unsigned int MDns::PopulateName(char* name_buffer){
+  // TODO: This section does not match the mDNS spec
+  // as it does not re-use strings from previous questions.
+
+  unsigned int buffer_pointer_start = buffer_pointer;
+  int word_start = 0, word_end = 0;
+  do{
+    if(name_buffer[word_end] == '.' or name_buffer[word_end] == '\0'){
+      int word_length = word_end - word_start;
+      data_buffer[buffer_pointer++] = (unsigned byte)word_length;
+      for(int i = word_start; i < word_end; ++i){
+        data_buffer[buffer_pointer++] = name_buffer[i];
+      }
+      word_end++;  // Skip the '.' charicter.
+      word_start = word_end;
+    }
+    word_end++;
+  } while(name_buffer[word_start] != '\0');
+  data_buffer[buffer_pointer++] = '\0';  // End of qname.
+
+  return buffer_pointer - buffer_pointer_start;
+}
+
 void MDns::AddQuery(Query query) {
   if(answer_count || ns_count || ar_count){
     Serial.println(" ERROR. Resource records inclued before Queries.");
+    return;
   }
   data_buffer[2] = 0;     // 0b00000000 for Query, 0b10000000 for Answer.
   type = 1;
@@ -130,22 +154,7 @@ void MDns::AddQuery(Query query) {
   data_buffer[5] = query_count & 0xFF;
 
   // Create DNS name buffer from qname.
-  // TODO: This section does not match the mDNS spec.
-  // It does not re-use strings from previous questions.
-  int word_start = 0, word_end = 0;
-  do{
-    if(query.qname_buffer[word_end] == '.' or query.qname_buffer[word_end] == '\0'){
-      int word_length = word_end - word_start;
-      data_buffer[buffer_pointer++] = (unsigned byte)word_length;
-      for(int i = word_start; i < word_end; ++i){
-        data_buffer[buffer_pointer++] = query.qname_buffer[i];
-      }
-      word_end++;  // Skip the '.' charicter.
-      word_start = word_end;
-    }
-    word_end++;
-  } while(query.qname_buffer[word_start] != '\0');
-  data_buffer[buffer_pointer++] = '\0';  // End of qname.
+  PopulateName(query.qname_buffer);
 
   // The rest of the flags.
   data_buffer[buffer_pointer++] = (query.qtype & 0xFF00) >> 8;
@@ -160,13 +169,74 @@ void MDns::AddQuery(Query query) {
   data_size = buffer_pointer;
 }
 
+void MDns::AddAnswer(Answer answer){
+  if(ns_count || ar_count){
+    Serial.println(" ERROR. NS or AR records added before Answer records");
+    return;
+  }
+  answer_count++;
+  data_buffer[6] = (answer_count & 0xFF00) >> 8;
+  data_buffer[7] = answer_count & 0xFF;
+
+  // Create DNS name buffer from name.
+  PopulateName(answer.name_buffer);
+
+  data_buffer[buffer_pointer++] = (answer.rrtype & 0xFF00) >> 8;
+  data_buffer[buffer_pointer++] = answer.rrtype & 0xFF;
+  
+  unsigned int rrclass = 0;
+  if(answer.rrset){
+    rrclass = 0b1000000000000000;
+  }
+  rrclass += answer.rrclass;
+  data_buffer[buffer_pointer++] = (rrclass & 0xFF00) >> 8;
+  data_buffer[buffer_pointer++] = rrclass & 0xFF;
+
+  data_buffer[buffer_pointer++] = (answer.rrttl & 0xFF000000) >> 24;
+  data_buffer[buffer_pointer++] = (answer.rrttl & 0xFF0000) >> 16;
+  data_buffer[buffer_pointer++] = (answer.rrttl & 0xFF00) >> 8;
+  data_buffer[buffer_pointer++] = (answer.rrttl & 0xFF);
+
+  unsigned int rdata_len_p0 = buffer_pointer++;
+  unsigned int rdata_len_p1 = buffer_pointer++;
+  unsigned int rdata_len;
+
+  switch (answer.rrtype) {
+    case 0x1:
+      // A. Returns a 32-bit IPv4 address
+      rdata_len = 4;
+      data_buffer[buffer_pointer++] = answer.rdata_buffer[0];
+      data_buffer[buffer_pointer++] = answer.rdata_buffer[1];
+      data_buffer[buffer_pointer++] = answer.rdata_buffer[2];
+      data_buffer[buffer_pointer++] = answer.rdata_buffer[3];
+      break;
+    case 0xC:
+      // PTR.  Pointer to a canonical name.
+      rdata_len = PopulateName(answer.rdata_buffer);
+      break;
+    //default:
+
+  }
+  
+  data_buffer[rdata_len_p0] = (rdata_len & 0xFF00) >> 8;
+  data_buffer[rdata_len_p1] = rdata_len & 0xFF;
+
+  data_size = buffer_pointer;
+}
+
 void MDns::Send() {
   Serial.println("Sending UDP multicast packet");
-  Udp.beginPacketMulticast(IPAddress(224, 0, 0, 251), 5353, WiFi.localIP());
+  Serial.println(Udp.localPort());
+
+  Udp.begin(5353);
+  Serial.println(Udp.localPort());
+  Udp.beginPacketMulticast(IPAddress(224, 0, 0, 251), 5353, WiFi.localIP(), 255);
   //Udp.write("UDP Multicast packet sent by ");
   //Udp.println(WiFi.localIP());
   Udp.write(data_buffer, data_size);
   Udp.endPacket();
+
+  Serial.println(Udp.localPort());
 }
 
 void MDns::Display() {

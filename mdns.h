@@ -34,7 +34,7 @@ struct Answer{
   unsigned int rrtype;                  // ResourceRecord Type.
   unsigned int rrclass;                 // ResourceRecord Class: Normally the value 1 for Internet (“IN”)
   unsigned long int rrttl;              // ResourceRecord Time To Live: Number of seconds ths should be remembered.
-  bool rrset;                           // 
+  bool rrset;                           // Flush cache of records matching this name.
   bool valid;                           // False if problems were encountered decoding packet.
 
   // Get data from provided p_packet_buffer and populate rdata_buffer.
@@ -61,7 +61,9 @@ class MDns {
 
   void Clear();
   void AddQuery(Query query);
-
+  void AddAnswer(Answer answer);
+  unsigned int PopulateName(char* name_buffer); // TODO private?
+  
   // Display a summary of the packet on Serial port.
   void Display();
   

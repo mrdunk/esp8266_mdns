@@ -49,14 +49,43 @@ void setup()
 
 
   my_mdns.Clear();
+
   struct mdns::Query query_mqtt;
   strncpy(query_mqtt.qname_buffer, "_mqtt._tcp.local", MAX_MDNS_NAME_LEN);
-  query_mqtt.qtype = 0xFF;
-  query_mqtt.qclass = 1;
+  query_mqtt.qtype = 0x0C;  // "PTR"
+  query_mqtt.qclass = 1;    // "INternet"
   query_mqtt.unicast_response = 0;
-  query_mqtt.valid = 1;
   my_mdns.AddQuery(query_mqtt);
+
   my_mdns.Send();
+
+  /*my_mdns.Clear();
+  
+  struct mdns::Query query_services;
+  strncpy(query_services.qname_buffer, "_services._dns-sd._udp.local", MAX_MDNS_NAME_LEN);
+  query_services.qtype = 0x0C;  // "PTR"
+  query_services.qclass = 1;    // "INternet"
+  query_services.unicast_response = 0;
+  my_mdns.AddQuery(query_services);
+
+  my_mdns.Send();*/
+
+  /*my_mdns.Clear();
+
+  struct mdns::Answer answer_esp;
+  strncpy(answer_esp.name_buffer, "esp_test.local", MAX_MDNS_NAME_LEN);
+  IPAddress ip = WiFi.localIP();
+  answer_esp.rdata_buffer[0] = ip[0];
+  answer_esp.rdata_buffer[1] = ip[1];
+  answer_esp.rdata_buffer[2] = ip[2];
+  answer_esp.rdata_buffer[3] = ip[3];
+  answer_esp.rrtype = 0x1; // "A" record. 32-bit IPv4 address.
+  answer_esp.rrclass = 1;  // "INternet"
+  answer_esp.rrttl = 0xE10; // 1 hour
+  answer_esp.rrset = 1;    // Cache flush.
+  my_mdns.AddAnswer(answer_esp);
+  
+  my_mdns.Send();*/
 }
 
 
