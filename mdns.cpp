@@ -7,10 +7,7 @@ namespace mdns {
 // A UDP instance to let us send and receive packets over UDP.
 WiFiUDP Udp;
 
-//IPAddress ipMulti(224, 0, 0, 251);
-//unsigned int portMulti = 5353;      // local port to listen on
-
-
+// Helper function to display formatted data.
 void PrintHex(unsigned char data) {
   char tmp[2];
   sprintf(tmp, "%02X", data);
@@ -22,7 +19,7 @@ bool MDns::Check() {
   if (!init) {
     init = true;
     Serial.println("Initilising Multicast.");
-    Udp.beginMulticast(WiFi.localIP(), IPAddress(224, 0, 0, 251), 5353);
+    Udp.beginMulticast(WiFi.localIP(), IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT);
   }
   data_size = Udp.parsePacket();
   if ( data_size > 12) {
@@ -119,31 +116,31 @@ void MDns::Clear() {
   ar_count = 0;
 }
 
-unsigned int MDns::PopulateName(char* name_buffer){
-  // TODO: This section does not match the mDNS spec
-  // as it does not re-use strings from previous questions.
+unsigned int MDns::PopulateName(char* name_buffer) {
+  // TODO: This section does not match the full mDNS spec
+  // as it does not re-use strings from previous queries.
 
   unsigned int buffer_pointer_start = buffer_pointer;
   int word_start = 0, word_end = 0;
-  do{
-    if(name_buffer[word_end] == '.' or name_buffer[word_end] == '\0'){
+  do {
+    if (name_buffer[word_end] == '.' or name_buffer[word_end] == '\0') {
       int word_length = word_end - word_start;
       data_buffer[buffer_pointer++] = (unsigned byte)word_length;
-      for(int i = word_start; i < word_end; ++i){
+      for (int i = word_start; i < word_end; ++i) {
         data_buffer[buffer_pointer++] = name_buffer[i];
       }
       word_end++;  // Skip the '.' charicter.
       word_start = word_end;
     }
     word_end++;
-  } while(name_buffer[word_start] != '\0');
+  } while (name_buffer[word_start] != '\0');
   data_buffer[buffer_pointer++] = '\0';  // End of qname.
 
   return buffer_pointer - buffer_pointer_start;
 }
 
 void MDns::AddQuery(Query query) {
-  if(answer_count || ns_count || ar_count){
+  if (answer_count || ns_count || ar_count) {
     Serial.println(" ERROR. Resource records inclued before Queries.");
     return;
   }
@@ -160,7 +157,7 @@ void MDns::AddQuery(Query query) {
   data_buffer[buffer_pointer++] = (query.qtype & 0xFF00) >> 8;
   data_buffer[buffer_pointer++] = query.qtype & 0xFF;
   unsigned int qclass = 0;
-  if(query.unicast_response){
+  if (query.unicast_response) {
     qclass = 0b1000000000000000;
   }
   qclass += query.qclass;
@@ -169,8 +166,8 @@ void MDns::AddQuery(Query query) {
   data_size = buffer_pointer;
 }
 
-void MDns::AddAnswer(Answer answer){
-  if(ns_count || ar_count){
+void MDns::AddAnswer(Answer answer) {
+  if (ns_count || ar_count) {
     Serial.println(" ERROR. NS or AR records added before Answer records");
     return;
   }
@@ -183,9 +180,9 @@ void MDns::AddAnswer(Answer answer){
 
   data_buffer[buffer_pointer++] = (answer.rrtype & 0xFF00) >> 8;
   data_buffer[buffer_pointer++] = answer.rrtype & 0xFF;
-  
+
   unsigned int rrclass = 0;
-  if(answer.rrset){
+  if (answer.rrset) {
     rrclass = 0b1000000000000000;
   }
   rrclass += answer.rrclass;
@@ -202,22 +199,21 @@ void MDns::AddAnswer(Answer answer){
   unsigned int rdata_len;
 
   switch (answer.rrtype) {
-    case 0x1:
-      // A. Returns a 32-bit IPv4 address
+    case MDNS_TYPE_A:  // Returns a 32-bit IPv4 address
       rdata_len = 4;
       data_buffer[buffer_pointer++] = answer.rdata_buffer[0];
       data_buffer[buffer_pointer++] = answer.rdata_buffer[1];
       data_buffer[buffer_pointer++] = answer.rdata_buffer[2];
       data_buffer[buffer_pointer++] = answer.rdata_buffer[3];
       break;
-    case 0xC:
-      // PTR.  Pointer to a canonical name.
+    case MDNS_TYPE_PTR:  // Pointer to a canonical name.
       rdata_len = PopulateName(answer.rdata_buffer);
       break;
-    //default:
-
+    default:
+      // TODO: Other record types.
+      Serial.println(" **ERROR** Sending this record type not implemented yet.");
   }
-  
+
   data_buffer[rdata_len_p0] = (rdata_len & 0xFF00) >> 8;
   data_buffer[rdata_len_p1] = rdata_len & 0xFF;
 
@@ -226,22 +222,16 @@ void MDns::AddAnswer(Answer answer){
 
 void MDns::Send() {
   Serial.println("Sending UDP multicast packet");
-  Serial.println(Udp.localPort());
 
-  Udp.begin(5353);
-  Serial.println(Udp.localPort());
-  Udp.beginPacketMulticast(IPAddress(224, 0, 0, 251), 5353, WiFi.localIP(), 255);
-  //Udp.write("UDP Multicast packet sent by ");
-  //Udp.println(WiFi.localIP());
+  Udp.begin(MDNS_SOURCE_PORT);
+  Udp.beginPacketMulticast(IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT, WiFi.localIP(), MDNS_TTL);
   Udp.write(data_buffer, data_size);
   Udp.endPacket();
-
-  Serial.println(Udp.localPort());
 }
 
 void MDns::Display() {
   Serial.println();
-  Serial.print("query size: ");
+  Serial.print("Packet size: ");
   Serial.print(data_size);
   Serial.print("  ");
   Serial.println(data_size, HEX);
@@ -311,9 +301,7 @@ struct Answer MDns::Parse_Answer() {
                        (data_buffer[buffer_pointer++] << 8) +
                        data_buffer[buffer_pointer++];
 
-  int rdlength = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
-
-  buffer_pointer = return_value.PopulateResultBuffer(data_buffer, buffer_pointer, rdlength);
+  PopulateAnswerResult(&return_value);
 
   return_value.valid = true;
   if (buffer_pointer > data_size) {
@@ -357,6 +345,75 @@ void MDns::DisplayRawPacket() {
       Serial.print(' ');
     }
     Serial.println();
+  }
+}
+
+
+void MDns::PopulateAnswerResult(Answer* answer) {
+  int rdlength = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+
+  switch (answer->rrtype) {
+    case MDNS_TYPE_A:  // Returns a 32-bit IPv4 address
+      if (MAX_MDNS_NAME_LEN >= 16) {
+        sprintf(answer->rdata_buffer, "%u.%u.%u.%u",
+                data_buffer[buffer_pointer++], data_buffer[buffer_pointer++],
+                data_buffer[buffer_pointer++], data_buffer[buffer_pointer++]);
+      } else {
+        sprintf(answer->rdata_buffer, "ipv4");
+        buffer_pointer += 4;
+      }
+      break;
+    case MDNS_TYPE_PTR:  // Pointer to a canonical name.
+      buffer_pointer = nameFromDnsPointer(answer->rdata_buffer, 0, MAX_MDNS_NAME_LEN,
+                                          data_buffer, buffer_pointer);
+      break;
+    case MDNS_TYPE_HINFO:  // HINFO. host information
+      buffer_pointer = parseText(answer->rdata_buffer, MAX_MDNS_NAME_LEN, rdlength,
+                                 data_buffer, buffer_pointer);
+      break;
+    case MDNS_TYPE_TXT:  // Originally for arbitrary human-readable text in a DNS record.
+      // We only return the first MAX_MDNS_NAME_LEN bytes of thir record type.
+      buffer_pointer = parseText(answer->rdata_buffer, MAX_MDNS_NAME_LEN, rdlength,
+                                 data_buffer, buffer_pointer);
+      break;
+    case MDNS_TYPE_AAAA:  // Returns a 128-bit IPv6 address.
+      {
+        int buffer_pos = 0;
+        for (int i = 0; i < rdlength; i++) {
+          if (buffer_pos < MAX_MDNS_NAME_LEN - 3) {
+            sprintf(answer->rdata_buffer + buffer_pos, "%02X:", data_buffer[buffer_pointer++]);
+          } else {
+            buffer_pointer++;
+          }
+          buffer_pos += 3;
+        }
+        answer->rdata_buffer[--buffer_pos] = '\0';  // Remove trailing ':'
+      }
+      break;
+    case MDNS_TYPE_SRV:  // Server Selection.
+      {
+        unsigned int priority = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+        unsigned int weight = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+        unsigned int port = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+        sprintf(answer->rdata_buffer, "p=%u;w=%u;port=%u;target=", priority, weight, port);
+
+        buffer_pointer = nameFromDnsPointer(answer->rdata_buffer, strlen(answer->rdata_buffer) +1, 
+            MAX_MDNS_NAME_LEN - strlen(answer->rdata_buffer) -1, data_buffer, buffer_pointer);
+      }
+      break;
+    default:
+      {
+        int buffer_pos = 0;
+        for (int i = 0; i < rdlength; i++) {
+          if (buffer_pos < MAX_MDNS_NAME_LEN - 3) {
+            sprintf(answer->rdata_buffer + buffer_pos, "%02X ", data_buffer[buffer_pointer++]);
+          } else {
+            buffer_pointer++;
+          }
+          buffer_pos += 3;
+        }
+      }
+      break;
   }
 }
 
@@ -436,69 +493,7 @@ void Query::Display() {
   Serial.println(unicast_response);
 }
 
-int Answer::PopulateResultBuffer(byte* p_packet_buffer, int packet_buffer_pos, int result_data_len) {
-  switch (rrtype) {
-    case 0x1:
-      // A. Returns a 32-bit IPv4 address
-      if (MAX_MDNS_NAME_LEN >= 16) {
-        sprintf(rdata_buffer, "%u.%u.%u.%u",
-                p_packet_buffer[packet_buffer_pos++], p_packet_buffer[packet_buffer_pos++],
-                p_packet_buffer[packet_buffer_pos++], p_packet_buffer[packet_buffer_pos++]);
-      } else {
-        sprintf(rdata_buffer, "ipv4");
-        packet_buffer_pos += 4;
-      }
-      break;
-    case 0xC:
-      // PTR.  Pointer to a canonical name.
-      packet_buffer_pos = nameFromDnsPointer(rdata_buffer, 0, MAX_MDNS_NAME_LEN,
-                                             p_packet_buffer, packet_buffer_pos);
-      break;
-    case 0xD:
-      // HINFO. host information
-      packet_buffer_pos = parseText(rdata_buffer, MAX_MDNS_NAME_LEN, result_data_len,
-                                    p_packet_buffer, packet_buffer_pos);
-      break;
-    case 0x10:
-      // TXT.  Originally for arbitrary human-readable text in a DNS record.
-      packet_buffer_pos = parseText(rdata_buffer, MAX_MDNS_NAME_LEN, result_data_len,
-                                    p_packet_buffer, packet_buffer_pos);
-      break;
-    case 0x1C:
-      // AAAA.  Returns a 128-bit IPv6 address.
-      {
-        int buffer_pos = 0;
-        for (int i = 0; i < result_data_len; i++) {
-          if (buffer_pos < MAX_MDNS_NAME_LEN - 3) {
-            sprintf(rdata_buffer + buffer_pos, "%02X:", p_packet_buffer[packet_buffer_pos++]);
-          } else {
-            packet_buffer_pos++;
-          }
-          buffer_pos += 3;
-        }
-      }
-      break;
-    case 0x21:
-    // SRV. Server Selection.
-    default:
-      {
-        int buffer_pos = 0;
-        for (int i = 0; i < result_data_len; i++) {
-          if (buffer_pos < MAX_MDNS_NAME_LEN - 3) {
-            sprintf(rdata_buffer + buffer_pos, "%02X ", p_packet_buffer[packet_buffer_pos++]);
-          } else {
-            packet_buffer_pos++;
-          }
-          buffer_pos += 3;
-        }
-      }
-      break;
-  }
-  return packet_buffer_pos;
-}
-
 void Answer::Display() {
-  //if (strncmp(qname_buffer, "_mqtt.", 6) == 0 || strncmp(qname_buffer, "twinkle", 7) == 0) {
   Serial.print("answer  0x");
   Serial.println(buffer_pointer, HEX);
   if (!valid) {

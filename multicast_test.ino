@@ -1,5 +1,6 @@
 /*
- * This sketch will display data mDNS (multicast DNS) data seen on the network.
+ * This sketch will display  mDNS (multicast DNS) data seen on the network
+ * and can be used 
  */
 
 #include <ESP8266WiFi.h>
@@ -7,7 +8,7 @@
 #include "mdns.h"
 
 #include "secrets.h"  // Contains the following:
-// const char* ssid = "Get off my wlan";  //  your network SSID (name)
+// const char* ssid = "Get off my wlan";      //  your network SSID (name)
 // const char* pass = "secretwlanpass";       // your network password
 
 void queryCallback(mdns::Query query){
@@ -18,8 +19,8 @@ void answerCallback(mdns::Answer answer){
   answer.Display();
 }
 
-//mdns::MDns my_mdns(queryCallback, answerCallback);
-mdns::MDns my_mdns;
+mdns::MDns my_mdns(queryCallback, answerCallback);
+//mdns::MDns my_mdns;
 
 void setup()
 {
@@ -52,7 +53,7 @@ void setup()
 
   struct mdns::Query query_mqtt;
   strncpy(query_mqtt.qname_buffer, "_mqtt._tcp.local", MAX_MDNS_NAME_LEN);
-  query_mqtt.qtype = 0x0C;  // "PTR"
+  query_mqtt.qtype = MDNS_TYPE_PTR;
   query_mqtt.qclass = 1;    // "INternet"
   query_mqtt.unicast_response = 0;
   my_mdns.AddQuery(query_mqtt);
@@ -63,7 +64,7 @@ void setup()
   
   struct mdns::Query query_services;
   strncpy(query_services.qname_buffer, "_services._dns-sd._udp.local", MAX_MDNS_NAME_LEN);
-  query_services.qtype = 0x0C;  // "PTR"
+  query_services.qtype = MDNS_TYPE_PTR;
   query_services.qclass = 1;    // "INternet"
   query_services.unicast_response = 0;
   my_mdns.AddQuery(query_services);
@@ -79,7 +80,7 @@ void setup()
   answer_esp.rdata_buffer[1] = ip[1];
   answer_esp.rdata_buffer[2] = ip[2];
   answer_esp.rdata_buffer[3] = ip[3];
-  answer_esp.rrtype = 0x1; // "A" record. 32-bit IPv4 address.
+  answer_esp.rrtype = MDNS_TYPE_A;
   answer_esp.rrclass = 1;  // "INternet"
   answer_esp.rrttl = 0xE10; // 1 hour
   answer_esp.rrset = 1;    // Cache flush.
