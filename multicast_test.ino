@@ -1,20 +1,28 @@
 /*
  * This sketch will display  mDNS (multicast DNS) data seen on the network
- * and can be used 
+ * and can be used to send mDNS queries.
  */
 
 #include <ESP8266WiFi.h>
-
 #include "mdns.h"
 
 #include "secrets.h"  // Contains the following:
 // const char* ssid = "Get off my wlan";      //  your network SSID (name)
 // const char* pass = "secretwlanpass";       // your network password
 
+
+//#define DEBUG_OUTPUT          // Send packet summaries to Serial.
+#define DEBUG_RAW             // Send HEX ans ASCII encoded raw packet to Serial.
+
+
+// When an mDNS packet gets parsed this callback gets called once per Query.
+// See mdns.h for definition of mdns::Query.
 void queryCallback(mdns::Query query){
   query.Display();
 }
 
+// When an mDNS packet gets parsed this callback gets called once per Query.
+// See mdns.h for definition of mdns::Query.
 void answerCallback(mdns::Answer answer){
   answer.Display();
 }
@@ -49,47 +57,28 @@ void setup()
   Serial.println("Connected to wifi");
 
 
+  // Query for all host information for a paticular service. ("_mqtt" in this case.)
   my_mdns.Clear();
-
   struct mdns::Query query_mqtt;
   strncpy(query_mqtt.qname_buffer, "_mqtt._tcp.local", MAX_MDNS_NAME_LEN);
   query_mqtt.qtype = MDNS_TYPE_PTR;
   query_mqtt.qclass = 1;    // "INternet"
   query_mqtt.unicast_response = 0;
   my_mdns.AddQuery(query_mqtt);
-
   my_mdns.Send();
 
-  /*my_mdns.Clear();
-  
+  /*
+  // Query for all service types on network.
+  my_mdns.Clear();
   struct mdns::Query query_services;
   strncpy(query_services.qname_buffer, "_services._dns-sd._udp.local", MAX_MDNS_NAME_LEN);
   query_services.qtype = MDNS_TYPE_PTR;
   query_services.qclass = 1;    // "INternet"
   query_services.unicast_response = 0;
   my_mdns.AddQuery(query_services);
-
   my_mdns.Send();*/
 
-  /*my_mdns.Clear();
-
-  struct mdns::Answer answer_esp;
-  strncpy(answer_esp.name_buffer, "esp_test.local", MAX_MDNS_NAME_LEN);
-  IPAddress ip = WiFi.localIP();
-  answer_esp.rdata_buffer[0] = ip[0];
-  answer_esp.rdata_buffer[1] = ip[1];
-  answer_esp.rdata_buffer[2] = ip[2];
-  answer_esp.rdata_buffer[3] = ip[3];
-  answer_esp.rrtype = MDNS_TYPE_A;
-  answer_esp.rrclass = 1;  // "INternet"
-  answer_esp.rrttl = 0xE10; // 1 hour
-  answer_esp.rrset = 1;    // Cache flush.
-  my_mdns.AddAnswer(answer_esp);
-  
-  my_mdns.Send();*/
 }
-
-
 
 void loop()
 {

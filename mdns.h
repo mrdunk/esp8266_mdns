@@ -5,9 +5,6 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 
-//#define DEBUG_OUTPUT          // Send packet summaries to Serial.
-//#define DEBUG_RAW             // Send HEX ans ASCII encoded raw packet to Serial.
-
 
 #define MDNS_TYPE_A     0x0001
 #define MDNS_TYPE_PTR   0x000C
