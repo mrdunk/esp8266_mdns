@@ -26,7 +26,7 @@ Find information on how to add a library to your Arduino IDE [here](https://www.
 To add a simple mDNS listener to an Aruino sketch which will display all mDNS packets over the serial console try the following:
 
 ```
-// This sketch will display  mDNS (multicast DNS) data seen on the network.
+// This sketch will display mDNS (multicast DNS) data seen on the network.
 
 #include <ESP8266WiFi.h>
 #include "mdns.h"

@@ -23,124 +23,115 @@
 String hosts[MAX_HOSTS][4];  // Array containing information about hosts received over mDNS.
 
 
-// When an mDNS packet gets parsed this callback gets called.
-void packetCallback(const mdns::MDns* packet){
-  packet->Display();
-  packet->DisplayRawPacket();
-}
-
 // When an mDNS packet gets parsed this callback gets called once per Query.
 // See mdns.h for definition of mdns::Query.
-void queryCallback(const mdns::Query* query){
-  query->Display();  // Uncomment this to display all Questions.
-}
-
-// When an mDNS packet gets parsed this callback gets called once per Query.
-// See mdns.h for definition of mdns::Query.
-void answerCallback(const mdns::Answer* answer){
-  answer->Display();  // Uncomment this to display all Answers.
+void answerCallback(const mdns::Answer* answer) {
 
   // A typical PTR record matches service to a human readable name.
-  // eg: 
+  // eg:
   //  service: _mqtt._tcp.local
   //  name:    Mosquitto MQTT server on twinkle.local
-  if(answer->rrtype == MDNS_TYPE_PTR and strstr(answer->name_buffer, QUESTION_SERVICE) != 0){
-    Serial.print(answer->name_buffer);
-    Serial.print("    ");
-    Serial.println(answer->rdata_buffer);
+  if (answer->rrtype == MDNS_TYPE_PTR and strstr(answer->name_buffer, QUESTION_SERVICE) != 0) {
     unsigned int i = 0;
-    for(; i < MAX_HOSTS; ++i){
-      if(hosts[i][HOSTS_SERVICE_NAME] == answer->rdata_buffer){
+    for (; i < MAX_HOSTS; ++i) {
+      if (hosts[i][HOSTS_SERVICE_NAME] == answer->rdata_buffer) {
         // Already in hosts[][].
         break;
       }
-      if(hosts[i][HOSTS_SERVICE_NAME] == ""){
+      if (hosts[i][HOSTS_SERVICE_NAME] == "") {
         // This hosts[][] entry is still empty.
         hosts[i][HOSTS_SERVICE_NAME] = answer->rdata_buffer;
         break;
       }
     }
-    if(i == MAX_HOSTS){
-      Serial.print(" ** ERROR ** No space in buffer for");
+    if (i == MAX_HOSTS) {
+      Serial.print(" ** ERROR ** No space in buffer for ");
+      Serial.print('"');
       Serial.print(answer->name_buffer);
+      Serial.print('"');
       Serial.print("  :  ");
+      Serial.print('"');
       Serial.println(answer->rdata_buffer);
+      Serial.print('"');
     }
   }
 
   // A typical SRV record matches a human readable name to port and FQDN info.
-  // eg: 
+  // eg:
   //  name:    Mosquitto MQTT server on twinkle.local
   //  data:    p=0;w=0;port=1883;host=twinkle.local
-  if(answer->rrtype == MDNS_TYPE_SRV){
+  if (answer->rrtype == MDNS_TYPE_SRV) {
     unsigned int i = 0;
-    for(; i < MAX_HOSTS; ++i){
-      if(hosts[i][HOSTS_SERVICE_NAME] == answer->name_buffer){
+    for (; i < MAX_HOSTS; ++i) {
+      if (hosts[i][HOSTS_SERVICE_NAME] == answer->name_buffer) {
         // This hosts entry matches the name of the host we are looking for
         // so parse data for port and hostname.
         char* port_start = strstr(answer->rdata_buffer, "port=");
-        if(port_start){
+        if (port_start) {
           port_start += 5;
           char* port_end = strchr(port_start, ';');
           char port[1 + port_end - port_start];
           strncpy(port, port_start, port_end - port_start);
+          port[port_end - port_start] = '\0';
 
-          if(port_end){
+          if (port_end) {
             char* host_start = strstr(port_end, "host=");
-            if(host_start){
+            if (host_start) {
               host_start += 5;
-              //Serial.print("** ");
-              //Serial.print(" port: ")
-              //Serial.print(port);
-              //Serial.print("  host: ");
-              //Serial.println(host_start);
               hosts[i][HOSTS_PORT] = port;
               hosts[i][HOSTS_HOST_NAME] = host_start;
             }
           }
         }
+        break;
       }
     }
-    if(i == MAX_HOSTS){
+    if (i == MAX_HOSTS) {
       Serial.print(" Did not find ");
+      Serial.print('"');
       Serial.print(answer->name_buffer);
+      Serial.print('"');
       Serial.println(" in hosts buffer.");
     }
   }
-  
+
   // A typical SRV record matches an FQDN to network ipv4 address.
   // eg:
   //   name:    twinkle.local
   //   address: 192.168.192.9
-  if(answer->rrtype == MDNS_TYPE_A){
-    Serial.print(answer->name_buffer);
-    Serial.print("    ");
-    Serial.println(answer->rdata_buffer);
+  if (answer->rrtype == MDNS_TYPE_A) {
     int i = 0;
-    for(; i < MAX_HOSTS; ++i){
-      if(hosts[i][HOSTS_HOST_NAME] == answer->name_buffer){
+    for (; i < MAX_HOSTS; ++i) {
+      if (hosts[i][HOSTS_HOST_NAME] == answer->name_buffer) {
         hosts[i][HOSTS_ADDRESS] = answer->rdata_buffer;
+        break;
       }
     }
-    if(i == MAX_HOSTS){
+    if (i == MAX_HOSTS) {
       Serial.print(" Did not find ");
+      Serial.print('"');
       Serial.print(answer->name_buffer);
+      Serial.print('"');
       Serial.println(" in hosts buffer.");
     }
   }
 
-  for(int i = 0; i < MAX_HOSTS; ++i){
-    Serial.print(hosts[i][HOSTS_SERVICE_NAME]);
-    Serial.print("    ");
-    Serial.print(hosts[i][HOSTS_PORT]);
-    Serial.print("    ");
-    Serial.print(hosts[i][HOSTS_HOST_NAME]);
-    Serial.print("    ");
-    Serial.println(hosts[i][HOSTS_ADDRESS]);
+  Serial.println();
+  for (int i = 0; i < MAX_HOSTS; ++i) {
+    if (hosts[i][HOSTS_SERVICE_NAME] != "") {
+      Serial.print(">  ");
+      Serial.print(hosts[i][HOSTS_SERVICE_NAME]);
+      Serial.print("    ");
+      Serial.print(hosts[i][HOSTS_PORT]);
+      Serial.print("    ");
+      Serial.print(hosts[i][HOSTS_HOST_NAME]);
+      Serial.print("    ");
+      Serial.println(hosts[i][HOSTS_ADDRESS]);
+    }
   }
 }
 
-mdns::MDns my_mdns(packetCallback, queryCallback, answerCallback);
+mdns::MDns my_mdns(NULL, NULL, answerCallback);
 //mdns::MDns my_mdns;
 
 void setup()

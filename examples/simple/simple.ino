@@ -1,5 +1,5 @@
 /*
- * This sketch will display  mDNS (multicast DNS) data seen on the network.
+ * This sketch will display mDNS (multicast DNS) data seen on the network.
  */
 
 
@@ -33,7 +33,7 @@ void setup() {
   Serial.begin(115200);
 
   // setting up Station AP
-  WiFi.begin("your_wifi_ssid", "your_wifi_password");
+  WiFi.begin("your_WiFI_SSID", "your_WiFi_password");
 
   // Wait for connect to AP
   int tries = 0;
@@ -45,6 +45,7 @@ void setup() {
       break;
     }
   }
+  printWifiStatus();
   Serial.println();
 }
 
@@ -52,3 +53,14 @@ void loop() {
   my_mdns.Check();
 }
 
+void printWifiStatus() {
+  // print the SSID of the network you're attached to:
+  Serial.println();
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your WiFi shield's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+}
