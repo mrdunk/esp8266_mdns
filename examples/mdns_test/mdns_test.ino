@@ -1,6 +1,7 @@
 /*
- * This sketch will display  mDNS (multicast DNS) data seen on the network
- * and can be used to send mDNS queries.
+ * This sketch will query the network for hosts providing the service defined by
+ * QUESTION_SERVICE and will parse any replies with the aim of saving port and
+ * network address in the hosts array.
  */
 
 #include <ESP8266WiFi.h>

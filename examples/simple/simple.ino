@@ -1,3 +1,8 @@
+/*
+ * This sketch will display  mDNS (multicast DNS) data seen on the network.
+ */
+
+
 #include <ESP8266WiFi.h>
 #include "mdns.h"
 
