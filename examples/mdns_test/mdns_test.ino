@@ -1,0 +1,209 @@
+/*
+ * This sketch will display  mDNS (multicast DNS) data seen on the network
+ * and can be used to send mDNS queries.
+ */
+
+#include <ESP8266WiFi.h>
+#include <mdns.h>
+
+#include "secrets.h"  // Contains the following:
+// const char* ssid = "Get off my wlan";      //  your network SSID (name)
+// const char* pass = "secretwlanpass";       // your network password
+
+
+
+#define QUESTION_SERVICE "_mqtt._tcp.local"
+
+#define MAX_HOSTS 4
+#define HOSTS_SERVICE_NAME 0
+#define HOSTS_PORT 1
+#define HOSTS_HOST_NAME 2
+#define HOSTS_ADDRESS 3
+String hosts[MAX_HOSTS][4];  // Array containing information about hosts received over mDNS.
+
+
+// When an mDNS packet gets parsed this callback gets called.
+void packetCallback(const mdns::MDns* packet){
+  packet->Display();
+  packet->DisplayRawPacket();
+}
+
+// When an mDNS packet gets parsed this callback gets called once per Query.
+// See mdns.h for definition of mdns::Query.
+void queryCallback(const mdns::Query* query){
+  query->Display();  // Uncomment this to display all Questions.
+}
+
+// When an mDNS packet gets parsed this callback gets called once per Query.
+// See mdns.h for definition of mdns::Query.
+void answerCallback(const mdns::Answer* answer){
+  answer->Display();  // Uncomment this to display all Answers.
+
+  // A typical PTR record matches service to a human readable name.
+  // eg: 
+  //  service: _mqtt._tcp.local
+  //  name:    Mosquitto MQTT server on twinkle.local
+  if(answer->rrtype == MDNS_TYPE_PTR and strstr(answer->name_buffer, QUESTION_SERVICE) != 0){
+    Serial.print(answer->name_buffer);
+    Serial.print("    ");
+    Serial.println(answer->rdata_buffer);
+    unsigned int i = 0;
+    for(; i < MAX_HOSTS; ++i){
+      if(hosts[i][HOSTS_SERVICE_NAME] == answer->rdata_buffer){
+        // Already in hosts[][].
+        break;
+      }
+      if(hosts[i][HOSTS_SERVICE_NAME] == ""){
+        // This hosts[][] entry is still empty.
+        hosts[i][HOSTS_SERVICE_NAME] = answer->rdata_buffer;
+        break;
+      }
+    }
+    if(i == MAX_HOSTS){
+      Serial.print(" ** ERROR ** No space in buffer for");
+      Serial.print(answer->name_buffer);
+      Serial.print("  :  ");
+      Serial.println(answer->rdata_buffer);
+    }
+  }
+
+  // A typical SRV record matches a human readable name to port and FQDN info.
+  // eg: 
+  //  name:    Mosquitto MQTT server on twinkle.local
+  //  data:    p=0;w=0;port=1883;host=twinkle.local
+  if(answer->rrtype == MDNS_TYPE_SRV){
+    unsigned int i = 0;
+    for(; i < MAX_HOSTS; ++i){
+      if(hosts[i][HOSTS_SERVICE_NAME] == answer->name_buffer){
+        // This hosts entry matches the name of the host we are looking for
+        // so parse data for port and hostname.
+        char* port_start = strstr(answer->rdata_buffer, "port=");
+        if(port_start){
+          port_start += 5;
+          char* port_end = strchr(port_start, ';');
+          char port[1 + port_end - port_start];
+          strncpy(port, port_start, port_end - port_start);
+
+          if(port_end){
+            char* host_start = strstr(port_end, "host=");
+            if(host_start){
+              host_start += 5;
+              //Serial.print("** ");
+              //Serial.print(" port: ")
+              //Serial.print(port);
+              //Serial.print("  host: ");
+              //Serial.println(host_start);
+              hosts[i][HOSTS_PORT] = port;
+              hosts[i][HOSTS_HOST_NAME] = host_start;
+            }
+          }
+        }
+      }
+    }
+    if(i == MAX_HOSTS){
+      Serial.print(" Did not find ");
+      Serial.print(answer->name_buffer);
+      Serial.println(" in hosts buffer.");
+    }
+  }
+  
+  // A typical SRV record matches an FQDN to network ipv4 address.
+  // eg:
+  //   name:    twinkle.local
+  //   address: 192.168.192.9
+  if(answer->rrtype == MDNS_TYPE_A){
+    Serial.print(answer->name_buffer);
+    Serial.print("    ");
+    Serial.println(answer->rdata_buffer);
+    int i = 0;
+    for(; i < MAX_HOSTS; ++i){
+      if(hosts[i][HOSTS_HOST_NAME] == answer->name_buffer){
+        hosts[i][HOSTS_ADDRESS] = answer->rdata_buffer;
+      }
+    }
+    if(i == MAX_HOSTS){
+      Serial.print(" Did not find ");
+      Serial.print(answer->name_buffer);
+      Serial.println(" in hosts buffer.");
+    }
+  }
+
+  for(int i = 0; i < MAX_HOSTS; ++i){
+    Serial.print(hosts[i][HOSTS_SERVICE_NAME]);
+    Serial.print("    ");
+    Serial.print(hosts[i][HOSTS_PORT]);
+    Serial.print("    ");
+    Serial.print(hosts[i][HOSTS_HOST_NAME]);
+    Serial.print("    ");
+    Serial.println(hosts[i][HOSTS_ADDRESS]);
+  }
+}
+
+mdns::MDns my_mdns(packetCallback, queryCallback, answerCallback);
+//mdns::MDns my_mdns;
+
+void setup()
+{
+  // Open serial communications and wait for port to open:
+  Serial.begin(115200);
+
+  // setting up Station AP
+  WiFi.begin(ssid, pass);
+
+  // Wait for connect to AP
+  Serial.print("[Connecting]");
+  Serial.print(ssid);
+  int tries = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    tries++;
+    if (tries > 30) {
+      break;
+    }
+  }
+  Serial.println();
+
+  printWifiStatus();
+
+  Serial.println("Connected to wifi");
+
+
+  // Query for all host information for a paticular service. ("_mqtt" in this case.)
+  my_mdns.Clear();
+  struct mdns::Query query_mqtt;
+  strncpy(query_mqtt.qname_buffer, QUESTION_SERVICE, MAX_MDNS_NAME_LEN);
+  query_mqtt.qtype = MDNS_TYPE_PTR;
+  query_mqtt.qclass = 1;    // "INternet"
+  query_mqtt.unicast_response = 0;
+  my_mdns.AddQuery(query_mqtt);
+  my_mdns.Send();
+
+  /*
+  // Query for all service types on network.
+  my_mdns.Clear();
+  struct mdns::Query query_services;
+  strncpy(query_services.qname_buffer, "_services._dns-sd._udp.local", MAX_MDNS_NAME_LEN);
+  query_services.qtype = MDNS_TYPE_PTR;
+  query_services.qclass = 1;    // "INternet"
+  query_services.unicast_response = 0;
+  my_mdns.AddQuery(query_services);
+  my_mdns.Send();*/
+
+}
+
+void loop()
+{
+  my_mdns.Check();
+}
+
+void printWifiStatus() {
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your WiFi shield's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+}

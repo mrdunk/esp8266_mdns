@@ -8,7 +8,7 @@ namespace mdns {
 WiFiUDP Udp;
 
 // Helper function to display formatted data.
-void PrintHex(unsigned char data) {
+void PrintHex(const unsigned char data) {
   char tmp[2];
   sprintf(tmp, "%02X", data);
   Serial.print(tmp);
@@ -18,7 +18,7 @@ void PrintHex(unsigned char data) {
 bool MDns::Check() {
   if (!init) {
     init = true;
-    Serial.println("Initilising Multicast.");
+    Serial.println("Initializing Multicast.");
     Udp.beginMulticast(WiFi.localIP(), IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT);
   }
   data_size = Udp.parsePacket();
@@ -51,6 +51,11 @@ bool MDns::Check() {
     // Number of incoming Additional resource records.
     ar_count = (data_buffer[10] << 8) + data_buffer[11];
 
+    if(p_packet_function_) {
+      // Since a callback function has been registered, execute it.
+      p_packet_function_(this);
+    }
+
 #ifdef DEBUG_OUTPUT
     Display();
 #endif  // DEBUG_OUTPUT
@@ -59,11 +64,11 @@ bool MDns::Check() {
     buffer_pointer = 12;
 
     for (int i_question = 0; i_question < query_count; i_question++) {
-      struct Query query = Parse_Query();
+      const Query query = Parse_Query();
       if (query.valid) {
         if (p_query_function_) {
           // Since a callback function has been registered, execute it.
-          p_query_function_(query);
+          p_query_function_(&query);
         }
       }
 #ifdef DEBUG_OUTPUT
@@ -72,11 +77,11 @@ bool MDns::Check() {
     }
 
     for (int i_answer = 0; i_answer < (answer_count + ns_count + ar_count); i_answer++) {
-      struct Answer answer = Parse_Answer();
+      const Answer answer = Parse_Answer();
       if (answer.valid) {
         if (p_answer_function_) {
           // Since a callback function has been registered, execute it.
-          p_answer_function_(answer);
+          p_answer_function_(&answer);
         }
       }
 #ifdef DEBUG_OUTPUT
@@ -116,7 +121,7 @@ void MDns::Clear() {
   ar_count = 0;
 }
 
-unsigned int MDns::PopulateName(char* name_buffer) {
+unsigned int MDns::PopulateName(const char* name_buffer) {
   // TODO: This section does not match the full mDNS spec
   // as it does not re-use strings from previous queries.
 
@@ -124,12 +129,12 @@ unsigned int MDns::PopulateName(char* name_buffer) {
   int word_start = 0, word_end = 0;
   do {
     if (name_buffer[word_end] == '.' or name_buffer[word_end] == '\0') {
-      int word_length = word_end - word_start;
+      const int word_length = word_end - word_start;
       data_buffer[buffer_pointer++] = (unsigned byte)word_length;
       for (int i = word_start; i < word_end; ++i) {
         data_buffer[buffer_pointer++] = name_buffer[i];
       }
-      word_end++;  // Skip the '.' charicter.
+      word_end++;  // Skip the '.' character.
       word_start = word_end;
     }
     word_end++;
@@ -139,7 +144,7 @@ unsigned int MDns::PopulateName(char* name_buffer) {
   return buffer_pointer - buffer_pointer_start;
 }
 
-void MDns::AddQuery(Query query) {
+void MDns::AddQuery(const Query query) {
   if (answer_count || ns_count || ar_count) {
     Serial.println(" ERROR. Resource records inclued before Queries.");
     return;
@@ -166,7 +171,7 @@ void MDns::AddQuery(Query query) {
   data_size = buffer_pointer;
 }
 
-void MDns::AddAnswer(Answer answer) {
+void MDns::AddAnswer(const Answer answer) {
   if (ns_count || ar_count) {
     Serial.println(" ERROR. NS or AR records added before Answer records");
     return;
@@ -194,8 +199,8 @@ void MDns::AddAnswer(Answer answer) {
   data_buffer[buffer_pointer++] = (answer.rrttl & 0xFF00) >> 8;
   data_buffer[buffer_pointer++] = (answer.rrttl & 0xFF);
 
-  unsigned int rdata_len_p0 = buffer_pointer++;
-  unsigned int rdata_len_p1 = buffer_pointer++;
+  const unsigned int rdata_len_p0 = buffer_pointer++;
+  const unsigned int rdata_len_p1 = buffer_pointer++;
   unsigned int rdata_len;
 
   switch (answer.rrtype) {
@@ -220,7 +225,7 @@ void MDns::AddAnswer(Answer answer) {
   data_size = buffer_pointer;
 }
 
-void MDns::Send() {
+void MDns::Send() const {
   Serial.println("Sending UDP multicast packet");
 
   Udp.begin(MDNS_SOURCE_PORT);
@@ -229,7 +234,7 @@ void MDns::Send() {
   Udp.endPacket();
 }
 
-void MDns::Display() {
+void MDns::Display() const {
   Serial.println();
   Serial.print("Packet size: ");
   Serial.print(data_size);
@@ -247,8 +252,8 @@ void MDns::Display() {
   Serial.println(ar_count);
 }
 
-struct Query MDns::Parse_Query() {
-  struct Query return_value;
+Query MDns::Parse_Query() {
+  Query return_value;
   return_value.buffer_pointer = buffer_pointer;
 
   buffer_pointer = nameFromDnsPointer(return_value.qname_buffer, 0, MAX_MDNS_NAME_LEN, data_buffer, buffer_pointer);
@@ -283,8 +288,8 @@ struct Query MDns::Parse_Query() {
   return return_value;
 }
 
-struct Answer MDns::Parse_Answer() {
-  struct Answer return_value;
+Answer MDns::Parse_Answer() {
+  Answer return_value;
   return_value.buffer_pointer = buffer_pointer;
 
   buffer_pointer = nameFromDnsPointer(return_value.name_buffer, 0, MAX_MDNS_NAME_LEN, data_buffer, buffer_pointer);
@@ -317,7 +322,7 @@ struct Answer MDns::Parse_Answer() {
 }
 
 // Display packet contents in HEX.
-void MDns::DisplayRawPacket() {
+void MDns::DisplayRawPacket() const {
   // display the packet contents in HEX
   Serial.println("Raw packet");
   int i, j;
@@ -392,12 +397,12 @@ void MDns::PopulateAnswerResult(Answer* answer) {
       break;
     case MDNS_TYPE_SRV:  // Server Selection.
       {
-        unsigned int priority = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
-        unsigned int weight = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
-        unsigned int port = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
-        sprintf(answer->rdata_buffer, "p=%u;w=%u;port=%u;target=", priority, weight, port);
+        const unsigned int priority = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+        const unsigned int weight = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+        const unsigned int port = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+        sprintf(answer->rdata_buffer, "p=%u;w=%u;port=%u;host=", priority, weight, port);
 
-        buffer_pointer = nameFromDnsPointer(answer->rdata_buffer, strlen(answer->rdata_buffer) +1, 
+        buffer_pointer = nameFromDnsPointer(answer->rdata_buffer, strlen(answer->rdata_buffer), 
             MAX_MDNS_NAME_LEN - strlen(answer->rdata_buffer) -1, data_buffer, buffer_pointer);
       }
       break;
@@ -417,7 +422,7 @@ void MDns::PopulateAnswerResult(Answer* answer) {
   }
 }
 
-bool writeToBuffer(byte value, char* p_name_buffer, int* p_name_buffer_pos, int name_buffer_len) {
+bool writeToBuffer(const byte value, char* p_name_buffer, int* p_name_buffer_pos, const int name_buffer_len) {
   if (*p_name_buffer_pos < name_buffer_len - 1) {
     *(p_name_buffer + *p_name_buffer_pos) = value;
     (*p_name_buffer_pos)++;
@@ -428,8 +433,8 @@ bool writeToBuffer(byte value, char* p_name_buffer, int* p_name_buffer_pos, int 
   return false;
 }
 
-int parseText(char* data_buffer, int data_buffer_len, int data_len,
-              byte* p_packet_buffer, int packet_buffer_pos) {
+int parseText(char* data_buffer, const int data_buffer_len, const int data_len,
+              const byte* p_packet_buffer, int packet_buffer_pos) {
   int i, data_buffer_pos = 0;
   for (i = 0; i < data_len; i++) {
     writeToBuffer(p_packet_buffer[packet_buffer_pos++], data_buffer, &data_buffer_pos, data_buffer_len);
@@ -438,10 +443,14 @@ int parseText(char* data_buffer, int data_buffer_len, int data_len,
   return packet_buffer_pos;
 }
 
-int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, int name_buffer_len,
-                       byte* p_packet_buffer, int packet_buffer_pos) {
+int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, const int name_buffer_len,
+                       const byte* p_packet_buffer, int packet_buffer_pos) {
+  return nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len, p_packet_buffer, packet_buffer_pos, false);
+}
 
-  if ((name_buffer_pos > 0) ) {
+int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, const int name_buffer_len,
+                       const byte* p_packet_buffer, int packet_buffer_pos, const bool recurse){
+  if (recurse) {
     // Since we are adding more to an already populated buffer,
     // replace the trailing EOL with the FQDN seperator.
     name_buffer_pos--;
@@ -453,7 +462,7 @@ int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, int name_buffer
     // this is the start of a name section.
     // http://www.tcpipguide.com/free/t_DNSNameNotationandMessageCompressionTechnique.htm
 
-    int word_len = *(p_packet_buffer + packet_buffer_pos++);
+    const int word_len = *(p_packet_buffer + packet_buffer_pos++);
     for (int l = 0; l < word_len; l++) {
       writeToBuffer(*(p_packet_buffer + packet_buffer_pos++), p_name_buffer, &name_buffer_pos, name_buffer_len);
     }
@@ -463,7 +472,7 @@ int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, int name_buffer
     if (*(p_packet_buffer + packet_buffer_pos) > 0) {
       // Next word.
       packet_buffer_pos =
-        nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len, p_packet_buffer, packet_buffer_pos);
+        nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len, p_packet_buffer, packet_buffer_pos, true);
     } else {
       // End of string.
       packet_buffer_pos++;
@@ -472,12 +481,12 @@ int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, int name_buffer
     // Message Compression used. Next 2 bytes are a pointer to the actual name section.
     int pointer = (*(p_packet_buffer + packet_buffer_pos++) - 0xC0) << 8;
     pointer += *(p_packet_buffer + packet_buffer_pos++);
-    nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len, p_packet_buffer, pointer);
+    nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len, p_packet_buffer, pointer, false);
   }
   return packet_buffer_pos;
 }
 
-void Query::Display() {
+void Query::Display() const {
   Serial.print("question  0x");
   Serial.println(buffer_pointer, HEX);
   if (!valid) {
@@ -493,7 +502,7 @@ void Query::Display() {
   Serial.println(unicast_response);
 }
 
-void Answer::Display() {
+void Answer::Display() const {
   Serial.print("answer  0x");
   Serial.println(buffer_pointer, HEX);
   if (!valid) {

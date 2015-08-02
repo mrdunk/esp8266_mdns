@@ -21,15 +21,34 @@ Requirements
 
 Usage
 -----
+Find information on how to add a library to your Arduino IDE [here](https://www.arduino.cc/en/Guide/Libraries).
+
 To add a simple mDNS listener to an Aruino sketch which will display all mDNS packets over the serial console try the following:
 ```
 #include <ESP8266WiFi.h>
 #include "mdns.h"
 
-#define DEBUG_OUTPUT          // Send packet summaries to Serial.
-#define DEBUG_RAW             // Send HEX ans ASCII encoded raw packet to Serial.
 
-mdns::MDns my_mdns;
+// When an mDNS packet gets parsed this callback gets called.
+void packetCallback(const mdns::MDns* packet){
+  packet->Display();
+  packet->DisplayRawPacket();
+}
+
+// When an mDNS packet gets parsed this callback gets called once per Query.
+// See mdns.h for definition of mdns::Query.
+void queryCallback(const mdns::Query* query){
+  query->Display();
+}
+
+// When an mDNS packet gets parsed this callback gets called once per Query.
+// See mdns.h for definition of mdns::Answer.
+void answerCallback(const mdns::Answer* answer){
+  answer->Display();
+}
+
+// Initialise MDns. If you don't want the optioanl callbacks, just provide a NULL pointer.
+mdns::MDns my_mdns(packetCallback, queryCallback, answerCallback);
 
 void setup() {
   // Open serial communications and wait for port to open:
@@ -55,9 +74,11 @@ void loop() {
   my_mdns.Check();
 }
 ```
-A more complete example is available int he ./examples/ folder.
+
+A more complete example which sends an mDNS Question and parses Answers is available in the ./examples/ folder.
 
 Troubleshooting
 ---------------
 Run [Wireshark](https://www.wireshark.org/) on a machine connected to your wireless network to confirm what is actually in flight.
 The following filter will return only mDNS packets: ```udp.port == 5353```
+Any mDNS packets seen by Wireshark should also appear on the ESP8266 Serial console.
