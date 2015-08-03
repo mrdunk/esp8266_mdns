@@ -21,9 +21,8 @@
 #define MDNS_TTL 255
 
 
-#define MAX_PACKET_SIZE 4096   // Make this as big as memory limitations allow.
+#define MAX_PACKET_SIZE 2048   // Make this as big as memory limitations allow.
 #define MAX_MDNS_NAME_LEN 256  // The mDNS spec says this should never be more than 256 (including trailing '\0').
-//#define MAX_MDNS_NAME_LEN 10   // test small buffer size.
 
 namespace mdns{
 

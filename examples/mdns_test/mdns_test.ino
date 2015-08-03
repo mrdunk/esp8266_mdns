@@ -132,7 +132,7 @@ void answerCallback(const mdns::Answer* answer) {
 }
 
 mdns::MDns my_mdns(NULL, NULL, answerCallback);
-//mdns::MDns my_mdns;
+
 
 void setup()
 {

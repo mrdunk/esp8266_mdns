@@ -25,7 +25,8 @@ bool MDns::Check() {
   if ( data_size > 12) {
     // We've received a packet which is long enough to contain useful data so
     // read the data from it.
-    // TODO think about what to do if a packet is larger than buffer.
+    // TODO Think about what to do if a packet is larger than buffer.
+    // TODO or better still: read the packet in sections so we can use a smaller buffer.
     Udp.read(data_buffer, data_size); // read the packet into the buffer
 
 
