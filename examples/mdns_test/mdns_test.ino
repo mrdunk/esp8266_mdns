@@ -95,7 +95,7 @@ void answerCallback(const mdns::Answer* answer) {
     }
   }
 
-  // A typical SRV record matches an FQDN to network ipv4 address.
+  // A typical A record matches an FQDN to network ipv4 address.
   // eg:
   //   name:    twinkle.local
   //   address: 192.168.192.9
