@@ -1,5 +1,6 @@
 # esp8266_mdns
 mDNS queries and responses on esp8266.
+Or to describe it another way: An mDNS Client or Bonjour Client library for the esp8266.
 
 This library aims to do the following:
  1. Give access to incoming mDNS packets and decode Question and Answer Records for commonly used record types.
