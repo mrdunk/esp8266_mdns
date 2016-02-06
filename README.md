@@ -7,8 +7,9 @@ This library aims to do the following:
  2. Allow Question and Answer Records for commonly used record types to be sent.
 
 Future goals:
- 1. Automatic replies to incoming Questions.
- 2. Automatic retries when sending packets according to rfc6762.
+ 1. Dynamic buffer paging. Currently one page is read from the network. If the mDNS packet is larger than that page size, any responses in the remainder are lost. (See MAX_PACKET_SIZE in mdns.h.)
+ 2. Automatic replies to incoming Questions.
+ 3. Automatic retries when sending packets according to rfc6762.
 
 Requirements
 ------------
