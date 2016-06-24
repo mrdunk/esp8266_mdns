@@ -23,10 +23,15 @@ bool MDns::Check() {
   }
   data_size = Udp.parsePacket();
   if ( data_size > 12) {
+     if(data_size > MAX_PACKET_SIZE) {
+      // Incoming data will not fit in buffer.
+      // TODO: read the packet in sections so we can use a smaller buffer.
+      // Non zero Response code implies error.
+      return false;
+    }
+
     // We've received a packet which is long enough to contain useful data so
     // read the data from it.
-    // TODO Think about what to do if a packet is larger than buffer.
-    // TODO or better still: read the packet in sections so we can use a smaller buffer.
     Udp.read(data_buffer, data_size); // read the packet into the buffer
 
 
