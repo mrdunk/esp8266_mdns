@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "mdns.h"
 
+
 namespace mdns {
 
 
@@ -23,23 +24,26 @@ bool MDns::Check() {
   }
   data_size = Udp.parsePacket();
   if ( data_size > 12) {
-     if(data_size > MAX_PACKET_SIZE) {
-      // Incoming data will not fit in buffer.
-      // TODO: read the packet in sections so we can use a smaller buffer.
-      // Non zero Response code implies error.
-      return false;
+    if(data_size > largest_packet_seen){
+      largest_packet_seen = data_size;
     }
+#ifdef DEBUG_STATISTICS
+    if(data_size > max_packet_size) {
+      buffer_size_fail++;
+      data_size = max_packet_size;
+    }
+    packet_count++;
+#endif
 
     // We've received a packet which is long enough to contain useful data so
     // read the data from it.
     Udp.read(data_buffer, data_size); // read the packet into the buffer
 
-
     // data_buffer[0] and data_buffer[1] contain the Query ID field which is unused in mDNS.
 
     // data_buffer[2] and data_buffer[3] are DNS flags which are mostly unused in mDNS.
     type = !(data_buffer[2] & 0b10000000);  // If it's not a query, it's an answer.
-    truncated = data_buffer[2] & 0b00000010;  // If it's truncated we can expect more data soon so we should wait for additional recods before deciding whether to respond.
+    truncated = data_buffer[2] & 0b00000010;  // If it's truncated we can expect more data soon so we should wait for additional records before deciding whether to respond.
     if (data_buffer[3] & 0b00001111) {
       // Non zero Response code implies error.
       return false;
@@ -70,12 +74,16 @@ bool MDns::Check() {
     buffer_pointer = 12;
 
     for (int i_question = 0; i_question < query_count; i_question++) {
-      const Query query = Parse_Query();
+      Query query;
+      Parse_Query(query);
       if (query.valid) {
         if (p_query_function_) {
           // Since a callback function has been registered, execute it.
           p_query_function_(&query);
         }
+      }
+      if(buffer_pointer >= data_size){
+        return false;
       }
 #ifdef DEBUG_OUTPUT
       query.Display();
@@ -83,12 +91,16 @@ bool MDns::Check() {
     }
 
     for (int i_answer = 0; i_answer < (answer_count + ns_count + ar_count); i_answer++) {
-      const Answer answer = Parse_Answer();
+      Answer answer;
+      Parse_Answer(answer);
       if (answer.valid) {
         if (p_answer_function_) {
           // Since a callback function has been registered, execute it.
           p_answer_function_(&answer);
         }
+      }
+      if(buffer_pointer >= data_size){
+        return false;
       }
 #ifdef DEBUG_OUTPUT
       answer.Display();
@@ -101,7 +113,7 @@ bool MDns::Check() {
 
     return true;
   }
-  return false;
+  return true;  // Not enough data for a full packet to be waiting.
 }
 
 void MDns::Clear() {
@@ -136,8 +148,10 @@ unsigned int MDns::PopulateName(const char* name_buffer) {
   do {
     if (name_buffer[word_end] == '.' or name_buffer[word_end] == '\0') {
       const int word_length = word_end - word_start;
+      if(buffer_pointer >= data_size){ return false; }
       data_buffer[buffer_pointer++] = (unsigned byte)word_length;
       for (int i = word_start; i < word_end; ++i) {
+        if(buffer_pointer >= data_size){ return false; }
         data_buffer[buffer_pointer++] = name_buffer[i];
       }
       word_end++;  // Skip the '.' character.
@@ -145,25 +159,27 @@ unsigned int MDns::PopulateName(const char* name_buffer) {
     }
     word_end++;
   } while (name_buffer[word_start] != '\0');
+  
+  if(buffer_pointer >= data_size){ return false; }
   data_buffer[buffer_pointer++] = '\0';  // End of qname.
 
   return buffer_pointer - buffer_pointer_start;
 }
 
-void MDns::AddQuery(const Query query) {
+bool MDns::AddQuery(const Query query) {
   if (answer_count || ns_count || ar_count) {
-    Serial.println(" ERROR. Resource records inclued before Queries.");
-    return;
+#ifdef DEBUG_OUTPUT
+    Serial.println(" ERROR. Resource records included before Queries.");
+#endif
+    return false;
   }
-  data_buffer[2] = 0;     // 0b00000000 for Query, 0b10000000 for Answer.
-  type = 1;
-  ++query_count;
-  data_buffer[4] = (query_count & 0xFF00) >> 8;
-  data_buffer[5] = query_count & 0xFF;
-
+  
   // Create DNS name buffer from qname.
   PopulateName(query.qname_buffer);
 
+  if(buffer_pointer +4 >= data_size){
+    return false;
+  }
   // The rest of the flags.
   data_buffer[buffer_pointer++] = (query.qtype & 0xFF00) >> 8;
   data_buffer[buffer_pointer++] = query.qtype & 0xFF;
@@ -175,19 +191,31 @@ void MDns::AddQuery(const Query query) {
   data_buffer[buffer_pointer++] = (qclass & 0xFF00) >> 8;
   data_buffer[buffer_pointer++] = qclass & 0xFF;
   data_size = buffer_pointer;
+  
+  // Since the data fitted in the buffer, it's ok to update the header.
+  data_buffer[2] = 0;     // 0b00000000 for Query, 0b10000000 for Answer.
+  type = 1;
+  ++query_count;
+  data_buffer[4] = (query_count & 0xFF00) >> 8;
+  data_buffer[5] = query_count & 0xFF;
+
+  return true;
 }
 
-void MDns::AddAnswer(const Answer answer) {
+bool MDns::AddAnswer(const Answer answer) {
   if (ns_count || ar_count) {
+#ifdef DEBUG_OUTPUT
     Serial.println(" ERROR. NS or AR records added before Answer records");
-    return;
+#endif
+    return false;
   }
-  answer_count++;
-  data_buffer[6] = (answer_count & 0xFF00) >> 8;
-  data_buffer[7] = answer_count & 0xFF;
 
   // Create DNS name buffer from name.
   PopulateName(answer.name_buffer);
+
+  if(buffer_pointer +10 >= data_size){
+    return false;
+  }
 
   data_buffer[buffer_pointer++] = (answer.rrtype & 0xFF00) >> 8;
   data_buffer[buffer_pointer++] = answer.rrtype & 0xFF;
@@ -211,6 +239,7 @@ void MDns::AddAnswer(const Answer answer) {
 
   switch (answer.rrtype) {
     case MDNS_TYPE_A:  // Returns a 32-bit IPv4 address
+      if(buffer_pointer +4 >= data_size){ return false; }
       rdata_len = 4;
       data_buffer[buffer_pointer++] = answer.rdata_buffer[0];
       data_buffer[buffer_pointer++] = answer.rdata_buffer[1];
@@ -219,16 +248,24 @@ void MDns::AddAnswer(const Answer answer) {
       break;
     case MDNS_TYPE_PTR:  // Pointer to a canonical name.
       rdata_len = PopulateName(answer.rdata_buffer);
+      if(buffer_pointer >= data_size){ return false; }
       break;
     default:
       // TODO: Other record types.
+#ifdef DEBUG_OUTPUT
       Serial.println(" **ERROR** Sending this record type not implemented yet.");
+#endif
   }
 
   data_buffer[rdata_len_p0] = (rdata_len & 0xFF00) >> 8;
   data_buffer[rdata_len_p1] = rdata_len & 0xFF;
 
   data_size = buffer_pointer;
+  
+  // Since the data fitted in the buffer, it's ok to update the header.
+  answer_count++;
+  data_buffer[6] = (answer_count & 0xFF00) >> 8;
+  data_buffer[7] = answer_count & 0xFF;
 }
 
 void MDns::Send() const {
@@ -258,73 +295,83 @@ void MDns::Display() const {
   Serial.println(ar_count);
 }
 
-Query MDns::Parse_Query() {
-  Query return_value;
-  return_value.buffer_pointer = buffer_pointer;
+void MDns::Parse_Query(Query& query) {
+#ifdef DEBUG_OUTPUT
+  query.buffer_pointer = buffer_pointer;
+#endif
 
-  buffer_pointer = nameFromDnsPointer(return_value.qname_buffer, 0, MAX_MDNS_NAME_LEN, data_buffer, buffer_pointer);
+  buffer_pointer = nameFromDnsPointer(query.qname_buffer, 0, MAX_MDNS_NAME_LEN,
+                                      data_buffer, buffer_pointer);
 
   byte qtype_0 = data_buffer[buffer_pointer++];
   byte qtype_1 = data_buffer[buffer_pointer++];
   byte qclass_0 = data_buffer[buffer_pointer++];
   byte qclass_1 = data_buffer[buffer_pointer++];
 
-  return_value.qtype = (qtype_0 << 8) + qtype_1;
+  query.qtype = (qtype_0 << 8) + qtype_1;
 
-  return_value.unicast_response = (0b10000000 & qclass_0);
-  return_value.qclass = ((qclass_0 & 0b01111111) << 8) + qclass_1;
+  query.unicast_response = (0b10000000 & qclass_0);
+  query.qclass = ((qclass_0 & 0b01111111) << 8) + qclass_1;
 
-  return_value.valid = true;
-  if (return_value.qclass != 0xFF && return_value.qclass != 0x01) {
+  query.valid = true;
+
+  if (query.qclass != 0xFF && query.qclass != 0x01) {
     // QCLASS is not ANY (0xFF) or INternet (0x01).
+#ifdef DEBUG_OUTPUT
     Serial.print(" **ERROR QCLASS** ");
-    Serial.println(return_value.qclass, HEX);
-    return_value.valid = false;
+    Serial.println(query.qclass, HEX);
+#endif
+    query.valid = false;
   }
 
-  if (buffer_pointer > data_size) {
+  if (buffer_pointer >= data_size) {
     // We've over-run the returned data.
-    // Something has gone wrong receiving or parseing the data.
+    // Something has gone wrong receiving or parsing the data.
+#ifdef DEBUG_OUTPUT
     Serial.print(" **ERROR size** ");
     Serial.print(buffer_pointer, HEX);
     Serial.print(" ");
     Serial.println(data_size, HEX);
-    return_value.valid = false;
+#endif
+    query.valid = false;
   }
-  return return_value;
 }
 
-Answer MDns::Parse_Answer() {
-  Answer return_value;
-  return_value.buffer_pointer = buffer_pointer;
+void MDns::Parse_Answer(Answer& answer) {
+#ifdef DEBUG_OUTPUT
+  answer.buffer_pointer = buffer_pointer;
+#endif
 
-  buffer_pointer = nameFromDnsPointer(return_value.name_buffer, 0, MAX_MDNS_NAME_LEN, data_buffer, buffer_pointer);
+  buffer_pointer = nameFromDnsPointer(answer.name_buffer, 0, MAX_MDNS_NAME_LEN,
+                                      data_buffer, buffer_pointer);
 
-  return_value.rrtype = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+  answer.rrtype = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
 
   byte rrclass_0 = data_buffer[buffer_pointer++];
   byte rrclass_1 = data_buffer[buffer_pointer++];
-  return_value.rrset = (0b10000000 & rrclass_0);
-  return_value.rrclass = ((rrclass_0 & 0b01111111) << 8) + rrclass_1;
+  answer.rrset = (0b10000000 & rrclass_0);
+  answer.rrclass = ((rrclass_0 & 0b01111111) << 8) + rrclass_1;
 
-  return_value.rrttl = (data_buffer[buffer_pointer++] << 24) +
+  answer.rrttl = (data_buffer[buffer_pointer++] << 24) +
                        (data_buffer[buffer_pointer++] << 16) +
                        (data_buffer[buffer_pointer++] << 8) +
                        data_buffer[buffer_pointer++];
-
-  PopulateAnswerResult(&return_value);
-
-  return_value.valid = true;
+  
   if (buffer_pointer > data_size) {
     // We've over-run the returned data.
-    // Something has gone wrong receiving or parseing the data.
+    // Something has gone wrong receiving or parsing the data.
+#ifdef DEBUG_OUTPUT
     Serial.print(" **ERROR size** ");
     Serial.print(buffer_pointer, HEX);
     Serial.print(" ");
     Serial.println(data_size, HEX);
-    return_value.valid = false;
+#endif
+    answer.valid = false;
+    return;
   }
-  return return_value;
+  PopulateAnswerResult(&answer);
+
+  answer.valid = true;
 }
 
 // Display packet contents in HEX.
@@ -403,9 +450,12 @@ void MDns::PopulateAnswerResult(Answer* answer) {
       break;
     case MDNS_TYPE_SRV:  // Server Selection.
       {
-        const unsigned int priority = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
-        const unsigned int weight = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
-        const unsigned int port = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+        const unsigned int priority = (data_buffer[buffer_pointer++] << 8) +
+            data_buffer[buffer_pointer++];
+        const unsigned int weight = (data_buffer[buffer_pointer++] << 8) +
+            data_buffer[buffer_pointer++];
+        const unsigned int port = (data_buffer[buffer_pointer++] << 8) +
+            data_buffer[buffer_pointer++];
         sprintf(answer->rdata_buffer, "p=%u;w=%u;port=%u;host=", priority, weight, port);
 
         buffer_pointer = nameFromDnsPointer(answer->rdata_buffer, strlen(answer->rdata_buffer), 
@@ -428,7 +478,8 @@ void MDns::PopulateAnswerResult(Answer* answer) {
   }
 }
 
-bool writeToBuffer(const byte value, char* p_name_buffer, int* p_name_buffer_pos, const int name_buffer_len) {
+bool writeToBuffer(const byte value, char* p_name_buffer, int* p_name_buffer_pos,
+                   const int name_buffer_len) {
   if (*p_name_buffer_pos < name_buffer_len - 1) {
     *(p_name_buffer + *p_name_buffer_pos) = value;
     (*p_name_buffer_pos)++;
@@ -451,7 +502,8 @@ int parseText(char* data_buffer, const int data_buffer_len, const int data_len,
 
 int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, const int name_buffer_len,
                        const byte* p_packet_buffer, int packet_buffer_pos) {
-  return nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len, p_packet_buffer, packet_buffer_pos, false);
+  return nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len,
+                            p_packet_buffer, packet_buffer_pos, false);
 }
 
 int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, const int name_buffer_len,
@@ -463,38 +515,43 @@ int nameFromDnsPointer(char* p_name_buffer, int name_buffer_pos, const int name_
     writeToBuffer('.', p_name_buffer, &name_buffer_pos, name_buffer_len);
   }
 
-  if (*(p_packet_buffer + packet_buffer_pos) < 0xC0) {
+  if (p_packet_buffer[packet_buffer_pos] < 0xC0) {
     // Since the first 2 bits are not set,
     // this is the start of a name section.
     // http://www.tcpipguide.com/free/t_DNSNameNotationandMessageCompressionTechnique.htm
 
-    const int word_len = *(p_packet_buffer + packet_buffer_pos++);
+    const int word_len = p_packet_buffer[packet_buffer_pos++];
     for (int l = 0; l < word_len; l++) {
-      writeToBuffer(*(p_packet_buffer + packet_buffer_pos++), p_name_buffer, &name_buffer_pos, name_buffer_len);
+      writeToBuffer(*(p_packet_buffer + packet_buffer_pos++), p_name_buffer,
+                    &name_buffer_pos, name_buffer_len);
     }
 
     writeToBuffer('\0', p_name_buffer, &name_buffer_pos, name_buffer_len);
 
-    if (*(p_packet_buffer + packet_buffer_pos) > 0) {
+    if (p_packet_buffer[packet_buffer_pos] > 0) {
       // Next word.
-      packet_buffer_pos =
-        nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len, p_packet_buffer, packet_buffer_pos, true);
+      packet_buffer_pos = nameFromDnsPointer(p_name_buffer, name_buffer_pos,
+                                             name_buffer_len, p_packet_buffer,
+                                             packet_buffer_pos, true);
     } else {
       // End of string.
       packet_buffer_pos++;
     }
   } else {
     // Message Compression used. Next 2 bytes are a pointer to the actual name section.
-    int pointer = (*(p_packet_buffer + packet_buffer_pos++) - 0xC0) << 8;
-    pointer += *(p_packet_buffer + packet_buffer_pos++);
-    nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len, p_packet_buffer, pointer, false);
+    int pointer = (p_packet_buffer[packet_buffer_pos++] - 0xC0) << 8;
+    pointer += p_packet_buffer[packet_buffer_pos++];
+    nameFromDnsPointer(p_name_buffer, name_buffer_pos, name_buffer_len,
+                       p_packet_buffer, pointer, false);
   }
   return packet_buffer_pos;
 }
 
 void Query::Display() const {
+#ifdef DEBUG_OUTPUT
   Serial.print("question  0x");
   Serial.println(buffer_pointer, HEX);
+#endif
   if (!valid) {
     Serial.println(" **ERROR**");
   }
@@ -509,8 +566,10 @@ void Query::Display() const {
 }
 
 void Answer::Display() const {
+#ifdef DEBUG_OUTPUT
   Serial.print("answer  0x");
   Serial.println(buffer_pointer, HEX);
+#endif
   if (!valid) {
     Serial.println(" **ERROR**");
   }

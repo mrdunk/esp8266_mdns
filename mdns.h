@@ -5,6 +5,7 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 
+#define DEBUG_STATISTICS      // Record how many incoming packets fitted into data_buffer.
 //#define DEBUG_OUTPUT          // Send packet summaries to Serial.
 //#define DEBUG_RAW             // Send HEX ans ASCII encoded raw packet to Serial.
 
@@ -20,15 +21,21 @@
 #define MDNS_SOURCE_PORT 5353
 #define MDNS_TTL 255
 
+// Make this as big as memory limitations allow.
+// This default value can be overridden using the max_packet_size_ parameter of
+// MDns().
+#define MAX_PACKET_SIZE 1024
 
-#define MAX_PACKET_SIZE 2048   // Make this as big as memory limitations allow.
-#define MAX_MDNS_NAME_LEN 256  // The mDNS spec says this should never be more than 256 (including trailing '\0').
+// The mDNS spec says this should never be more than 256 (including trailing '\0').
+#define MAX_MDNS_NAME_LEN 256  
 
 namespace mdns{
 
 // A single mDNS Query.
 typedef struct Query{
+#ifdef DEBUG_OUTPUT
   unsigned int buffer_pointer;            // Position of Answer in packet. (Used for debugging only.)
+#endif
   char qname_buffer[MAX_MDNS_NAME_LEN];   // Question Name: Contains the object, domain or zone name.
   unsigned int qtype;                     // Question Type: Type of question being asked by client.
   unsigned int qclass;                    // Question Class: Normally the value 1 for Internet (“IN”)
@@ -40,7 +47,9 @@ typedef struct Query{
 
 // A single mDNS Answer.
 typedef struct Answer{
+#ifdef DEBUG_OUTPUT
   unsigned int buffer_pointer;          // Position of Answer in packet. (Used for debugging only.)
+#endif
   char name_buffer[MAX_MDNS_NAME_LEN];  // object, domain or zone name.
   char rdata_buffer[MAX_MDNS_NAME_LEN]; // The data portion of the resource record.
   unsigned int rrtype;                  // ResourceRecord Type.
@@ -54,15 +63,46 @@ typedef struct Answer{
 
 class MDns {
  public:
-  MDns() : init(false), p_query_function_(NULL), p_answer_function_(NULL) {};
+  // Simple constructor does not fire any callbacks on incoming data.
+  // Default incoming data_buffer size is used.
+  MDns() : MDns(NULL, NULL, NULL, MAX_PACKET_SIZE) {}
 
-  // Takes pointers to functions that will be passed Queries and Answers whenever they arrive.
+  // Simple constructor does not fire any callbacks on incoming data.
+  // Args:
+  //   max_packet_size_ : Set the data_buffer size allocated to store incoming packets.
+  MDns(int max_packet_size_) : MDns(NULL, NULL, NULL, max_packet_size_) {}
+  
+  // Constructor takes callbacks which fire when mDNS data arrives.
+  // Args:
+  //   p_packet_function : Callback fires for every mDNS packet that arrives.
+  //   p_query_function : Callback fires for every mDNS Query that arrives as part of a packet.
+  //   p_answer_function : Callback fires for every mDNS Answer that arrives as part of a packet.
   MDns(void(*p_packet_function)(const MDns*), 
        void(*p_query_function)(const Query*), 
        void(*p_answer_function)(const Answer*)) :
+    MDns(p_packet_function, p_query_function, p_answer_function, MAX_PACKET_SIZE) { }
+
+  MDns(void(*p_packet_function)(const MDns*), 
+  // Constructor takes callbacks which fire when mDNS data arrives.
+  // Args:
+  //   p_packet_function : Callback fires for every mDNS packet that arrives.
+  //   p_query_function : Callback fires for every mDNS Query that arrives as part of a packet.
+  //   p_answer_function : Callback fires for every mDNS Answer that arrives as part of a packet.
+  //   max_packet_size_ : Set the data_buffer size allocated to store incoming packets.
+       void(*p_query_function)(const Query*), 
+       void(*p_answer_function)(const Answer*),
+       int max_packet_size_) :
        p_packet_function_(p_packet_function),
        p_query_function_(p_query_function),
-       p_answer_function_(p_answer_function) {};
+       p_answer_function_(p_answer_function),
+       max_packet_size(max_packet_size_),
+       data_buffer(new byte[max_packet_size_]),
+#ifdef DEBUG_STATISTICS
+       buffer_size_fail(0),
+       largest_packet_seen(0),
+       packet_count(0) 
+#endif
+       { };
 
   // Call this regularly to check for an incoming packet.
   bool Check();
@@ -70,26 +110,38 @@ class MDns {
   // Send this MDns packet.
   void Send() const;
 
-  // Resets everything to reperesent an empty packet.
+  // Resets everything to represent an empty packet.
   // Do this before building a packet for sending.
   void Clear();
 
   // Add a query to packet prior to sending.
   // May only be done before any Answers have been added.
-  void AddQuery(const Query query);
+  bool AddQuery(const Query query);
 
   // Add an answer to packet prior to sending.
-  void AddAnswer(const Answer answer);
+  bool AddAnswer(const Answer answer);
   
   // Display a summary of the packet on Serial port.
   void Display() const;
   
   // Display the raw packet in HEX and ASCII.
   void DisplayRawPacket() const;
-   
+ 
+#ifdef DEBUG_STATISTICS
+  // Counter gets increased every time an incoming mDNS packet arrives that does
+  // not fit in the data_buffer.
+  unsigned int buffer_size_fail;
+
+  // Track the largest mDNS packet that has arrived.
+  // Useful for knowing what size to make data_buffer.
+  int largest_packet_seen;
+
+  // How many mDNS packets have arrived so far.
+  unsigned int packet_count;
+#endif
  private:
-  struct Query Parse_Query();
-  struct Answer Parse_Answer();
+  void Parse_Query(Query& query);
+  void Parse_Answer(Answer& answer);
   unsigned int PopulateName(const char* name_buffer);
   void PopulateAnswerResult(Answer* answer);
   
@@ -111,8 +163,12 @@ class MDns {
   // Position in data_buffer while processing packet.
   unsigned int buffer_pointer;
 
+  // Buffer size for incoming MDns packet.
+  int max_packet_size;
+
   // Buffer containing mDNS packet.
-  byte data_buffer[MAX_PACKET_SIZE];
+  //byte data_buffer[MAX_PACKET_SIZE];
+  byte* data_buffer;
 
   // Query or Answer
   bool type;

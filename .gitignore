@@ -1,0 +1,6 @@
+*.swp
+*.pyc
+*.swo
+*/3rdparty/
+*/3rdparty
+secrets.h

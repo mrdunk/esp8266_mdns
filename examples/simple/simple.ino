@@ -3,7 +3,6 @@
  */
 
 
-#include <ESP8266WiFi.h>
 #include "mdns.h"
 
 
@@ -49,8 +48,21 @@ void setup() {
   Serial.println();
 }
 
+unsigned int last_packet_count = 0;
 void loop() {
   my_mdns.Check();
+
+#ifdef DEBUG_STATISTICS
+  // Give feedback on the percentage of incoming mDNS packets that fitted in buffer.
+  // Useful for tuning the buffer size to make best use of available memory.
+  if(last_packet_count != my_mdns.packet_count && my_mdns.packet_count != 0){
+    last_packet_count = my_mdns.packet_count;
+    Serial.print("mDNS decode success rate: ");
+    Serial.print(100 - (100 * my_mdns.buffer_size_fail / my_mdns.packet_count));
+    Serial.print("%\nLargest packet size: ");
+    Serial.println(my_mdns.largest_packet_seen);
+  }
+#endif
 }
 
 void printWifiStatus() {

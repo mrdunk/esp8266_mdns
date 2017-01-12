@@ -4,7 +4,7 @@
  * network address in the hosts array.
  */
 
-#include <ESP8266WiFi.h>
+
 #include <mdns.h>
 
 #include "secrets.h"  // Contains the following:
@@ -12,8 +12,10 @@
 // const char* pass = "secretwlanpass";       // your network password
 
 
-
 #define QUESTION_SERVICE "_mqtt._tcp.local"
+
+// Make this value as large as available ram allows.
+#define MAX_MDNS_PACKET_SIZE 200
 
 #define MAX_HOSTS 4
 #define HOSTS_SERVICE_NAME 0
@@ -131,7 +133,7 @@ void answerCallback(const mdns::Answer* answer) {
   }
 }
 
-mdns::MDns my_mdns(NULL, NULL, answerCallback);
+mdns::MDns my_mdns(NULL, NULL, answerCallback, MAX_MDNS_PACKET_SIZE);
 
 
 void setup()
@@ -184,9 +186,22 @@ void setup()
 
 }
 
+unsigned int last_packet_count = 0;
 void loop()
 {
   my_mdns.Check();
+
+#ifdef DEBUG_STATISTICS
+  // Give feedback on the percentage of incoming mDNS packets that fitted in buffer.
+  // Useful for tuning the buffer size to make best use of available memory.
+  if(last_packet_count != my_mdns.packet_count && my_mdns.packet_count != 0){
+    last_packet_count = my_mdns.packet_count;
+    Serial.print("mDNS decode success rate: ");
+    Serial.print(100 - (100 * my_mdns.buffer_size_fail / my_mdns.packet_count));
+    Serial.print("%\nLargest packet size: ");
+    Serial.println(my_mdns.largest_packet_seen);
+  }
+#endif
 }
 
 void printWifiStatus() {
