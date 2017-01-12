@@ -92,16 +92,17 @@ class MDns {
        void(*p_query_function)(const Query*), 
        void(*p_answer_function)(const Answer*),
        int max_packet_size_) :
-       p_packet_function_(p_packet_function),
-       p_query_function_(p_query_function),
-       p_answer_function_(p_answer_function),
-       max_packet_size(max_packet_size_),
-       data_buffer(new byte[max_packet_size_]),
 #ifdef DEBUG_STATISTICS
        buffer_size_fail(0),
        largest_packet_seen(0),
-       packet_count(0) 
+       packet_count(0),
 #endif
+       p_packet_function_(p_packet_function),
+       p_query_function_(p_query_function),
+       p_answer_function_(p_answer_function),
+       buffer_pointer(0),
+       max_packet_size(max_packet_size_),
+       data_buffer(new byte[max_packet_size_])
        { };
 
   // Call this regularly to check for an incoming packet.
@@ -134,7 +135,7 @@ class MDns {
 
   // Track the largest mDNS packet that has arrived.
   // Useful for knowing what size to make data_buffer.
-  int largest_packet_seen;
+  unsigned int largest_packet_seen;
 
   // How many mDNS packets have arrived so far.
   unsigned int packet_count;
@@ -164,7 +165,7 @@ class MDns {
   unsigned int buffer_pointer;
 
   // Buffer size for incoming MDns packet.
-  int max_packet_size;
+  unsigned int max_packet_size;
 
   // Buffer containing mDNS packet.
   //byte data_buffer[MAX_PACKET_SIZE];

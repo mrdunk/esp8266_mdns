@@ -73,7 +73,7 @@ bool MDns::Check() {
     // Start of Data section.
     buffer_pointer = 12;
 
-    for (int i_question = 0; i_question < query_count; i_question++) {
+    for (unsigned int i_question = 0; i_question < query_count; i_question++) {
       Query query;
       Parse_Query(query);
       if (query.valid) {
@@ -90,7 +90,7 @@ bool MDns::Check() {
 #endif  // DEBUG_OUTPUT
     }
 
-    for (int i_answer = 0; i_answer < (answer_count + ns_count + ar_count); i_answer++) {
+    for (unsigned int i_answer = 0; i_answer < (answer_count + ns_count + ar_count); i_answer++) {
       Answer answer;
       Parse_Answer(answer);
       if (answer.valid) {
@@ -235,7 +235,7 @@ bool MDns::AddAnswer(const Answer answer) {
 
   const unsigned int rdata_len_p0 = buffer_pointer++;
   const unsigned int rdata_len_p1 = buffer_pointer++;
-  unsigned int rdata_len;
+  unsigned int rdata_len = 0;
 
   switch (answer.rrtype) {
     case MDNS_TYPE_A:  // Returns a 32-bit IPv4 address
@@ -251,10 +251,11 @@ bool MDns::AddAnswer(const Answer answer) {
       if(buffer_pointer >= data_size){ return false; }
       break;
     default:
-      // TODO: Other record types.
 #ifdef DEBUG_OUTPUT
+      // TODO: Other record types.
       Serial.println(" **ERROR** Sending this record type not implemented yet.");
 #endif
+      return false;
   }
 
   data_buffer[rdata_len_p0] = (rdata_len & 0xFF00) >> 8;
@@ -266,6 +267,8 @@ bool MDns::AddAnswer(const Answer answer) {
   answer_count++;
   data_buffer[6] = (answer_count & 0xFF00) >> 8;
   data_buffer[7] = answer_count & 0xFF;
+
+  return true;
 }
 
 void MDns::Send() const {
@@ -378,7 +381,7 @@ void MDns::Parse_Answer(Answer& answer) {
 void MDns::DisplayRawPacket() const {
   // display the packet contents in HEX
   Serial.println("Raw packet");
-  int i, j;
+  unsigned int i, j;
 
   for (i = 0; i <= data_size; i += 16) {
     Serial.print("0x");
