@@ -145,39 +145,62 @@ unsigned int MDns::PopulateName(const char* name_buffer) {
 
   unsigned int buffer_pointer_start = buffer_pointer;
   int word_start = 0, word_end = 0;
-  do {
+  while (true) {
     if (name_buffer[word_end] == '.' or name_buffer[word_end] == '\0') {
       const int word_length = word_end - word_start;
-      if(buffer_pointer >= data_size){ return false; }
+      if(buffer_pointer >= data_size){
+        buffer_pointer = buffer_pointer_start;
+        return 0;
+      }
       data_buffer[buffer_pointer++] = (unsigned byte)word_length;
       for (int i = word_start; i < word_end; ++i) {
-        if(buffer_pointer >= data_size){ return false; }
+        if(buffer_pointer >= data_size){
+          buffer_pointer = buffer_pointer_start;
+          return 0;
+        }
         data_buffer[buffer_pointer++] = name_buffer[i];
+      }
+      if(name_buffer[word_end] == '\0'){
+        break;
       }
       word_end++;  // Skip the '.' character.
       word_start = word_end;
     }
     word_end++;
-  } while (name_buffer[word_start] != '\0');
+  };
   
-  if(buffer_pointer >= data_size){ return false; }
+  if(buffer_pointer >= data_size){
+    buffer_pointer = buffer_pointer_start;
+    return 0;
+  }
   data_buffer[buffer_pointer++] = '\0';  // End of qname.
 
   return buffer_pointer - buffer_pointer_start;
 }
 
-bool MDns::AddQuery(const Query query) {
+bool MDns::AddQuery(const Query& query) {
   if (answer_count || ns_count || ar_count) {
 #ifdef DEBUG_OUTPUT
     Serial.println(" ERROR. Resource records included before Queries.");
 #endif
     return false;
   }
+ 
+  // Buffer size will be dependant on the string "query.qname_buffer".
+  // When encoded "query.qname_buffer" will take 2 bytes between words.
+  int word_count = 0;
+  for (int i = 0; i < strlen(query.qname_buffer); i++){
+    if(query.qname_buffer[i] == '.'){
+      word_count++;
+    }
+  }
+  data_size += strlen(query.qname_buffer) +word_count +4;
   
   // Create DNS name buffer from qname.
-  PopulateName(query.qname_buffer);
-
-  if(buffer_pointer +4 >= data_size){
+  if(PopulateName(query.qname_buffer) == 0 || buffer_pointer +4 > data_size){
+#ifdef DEBUG_OUTPUT
+    Serial.println(" ERROR. Query name over-ran expected buffer space.");
+#endif
     return false;
   }
   // The rest of the flags.
@@ -202,7 +225,7 @@ bool MDns::AddQuery(const Query query) {
   return true;
 }
 
-bool MDns::AddAnswer(const Answer answer) {
+bool MDns::AddAnswer(const Answer& answer) {
   if (ns_count || ar_count) {
 #ifdef DEBUG_OUTPUT
     Serial.println(" ERROR. NS or AR records added before Answer records");
@@ -210,10 +233,21 @@ bool MDns::AddAnswer(const Answer answer) {
     return false;
   }
 
+  // Buffer size will be dependant on the string "query.qname_buffer".
+  // When encoded "query.qname_buffer" will take 2 bytes between words.
+  int word_count = 0;
+  for (int i = 0; i < strlen(answer.name_buffer); i++){
+    if(answer.name_buffer[i] == '.'){
+      word_count++;
+    }
+  }
+  data_size += strlen(answer.name_buffer) +word_count +4;
+  
   // Create DNS name buffer from name.
-  PopulateName(answer.name_buffer);
-
-  if(buffer_pointer +10 >= data_size){
+  if(PopulateName(answer.name_buffer) == 0 || buffer_pointer +10 > data_size){
+#ifdef DEBUG_OUTPUT
+    Serial.println(" ERROR. Query name over-ran expected buffer space.");
+#endif
     return false;
   }
 

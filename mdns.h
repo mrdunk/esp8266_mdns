@@ -117,10 +117,10 @@ class MDns {
 
   // Add a query to packet prior to sending.
   // May only be done before any Answers have been added.
-  bool AddQuery(const Query query);
+  bool AddQuery(const Query& query);
 
   // Add an answer to packet prior to sending.
-  bool AddAnswer(const Answer answer);
+  bool AddAnswer(const Answer& answer);
   
   // Display a summary of the packet on Serial port.
   void Display() const;
