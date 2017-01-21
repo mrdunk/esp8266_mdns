@@ -15,7 +15,7 @@
 #define QUESTION_SERVICE "_mqtt._tcp.local"
 
 // Make this value as large as available ram allows.
-#define MAX_MDNS_PACKET_SIZE 200
+#define MAX_MDNS_PACKET_SIZE 512
 
 #define MAX_HOSTS 4
 #define HOSTS_SERVICE_NAME 0

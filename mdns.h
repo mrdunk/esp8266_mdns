@@ -6,7 +6,7 @@
 #include <WiFiUdp.h>
 
 #define DEBUG_STATISTICS      // Record how many incoming packets fitted into data_buffer.
-#define DEBUG_OUTPUT          // Send packet summaries to Serial.
+//#define DEBUG_OUTPUT          // Send packet summaries to Serial.
 //#define DEBUG_RAW             // Send HEX ans ASCII encoded raw packet to Serial.
 
 
