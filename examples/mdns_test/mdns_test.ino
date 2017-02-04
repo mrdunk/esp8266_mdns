@@ -133,7 +133,10 @@ void answerCallback(const mdns::Answer* answer) {
   }
 }
 
-mdns::MDns my_mdns(NULL, NULL, answerCallback, MAX_MDNS_PACKET_SIZE);
+
+// buffer can be used bu other processes that need a large chunk of memory.
+byte buffer[MAX_MDNS_PACKET_SIZE];
+mdns::MDns my_mdns(NULL, NULL, answerCallback, buffer, MAX_MDNS_PACKET_SIZE);
 
 
 void setup()
@@ -202,6 +205,13 @@ void loop()
     Serial.println(my_mdns.largest_packet_seen);
   }
 #endif
+
+  // mDNS not using buffer outside my_mdns.loop() so it can be used for other tasks.
+  strncpy((char*)buffer,
+          "<html><head>Some webpage that needs a large buffer</head>"
+          "<body>big content...</body></html>",
+          MAX_MDNS_PACKET_SIZE);
+  // Display buffer here....
 }
 
 void printWifiStatus() {

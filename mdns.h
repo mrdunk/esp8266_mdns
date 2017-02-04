@@ -82,13 +82,13 @@ class MDns {
        void(*p_answer_function)(const Answer*)) :
     MDns(p_packet_function, p_query_function, p_answer_function, MAX_PACKET_SIZE) { }
 
-  MDns(void(*p_packet_function)(const MDns*), 
   // Constructor takes callbacks which fire when mDNS data arrives.
   // Args:
   //   p_packet_function : Callback fires for every mDNS packet that arrives.
   //   p_query_function : Callback fires for every mDNS Query that arrives as part of a packet.
   //   p_answer_function : Callback fires for every mDNS Answer that arrives as part of a packet.
   //   max_packet_size_ : Set the data_buffer size allocated to store incoming packets.
+  MDns(void(*p_packet_function)(const MDns*), 
        void(*p_query_function)(const Query*), 
        void(*p_answer_function)(const Answer*),
        int max_packet_size_) :
@@ -103,6 +103,31 @@ class MDns {
        buffer_pointer(0),
        max_packet_size(max_packet_size_),
        data_buffer(new byte[max_packet_size_])
+       { };
+
+  // Constructor can be passed the buffer to hold the mDNS data.
+  // This way the potentially large buffer can be shared with other processes.
+  // Args:
+  //   p_packet_function : Callback fires for every mDNS packet that arrives.
+  //   p_query_function : Callback fires for every mDNS Query that arrives as part of a packet.
+  //   p_answer_function : Callback fires for every mDNS Answer that arrives as part of a packet.
+  //   max_packet_size_ : Set the data_buffer size allocated to store incoming packets.
+  MDns(void(*p_packet_function)(const MDns*), 
+       void(*p_query_function)(const Query*), 
+       void(*p_answer_function)(const Answer*),
+       byte* data_buffer_,
+       int max_packet_size_) :
+#ifdef DEBUG_STATISTICS
+       buffer_size_fail(0),
+       largest_packet_seen(0),
+       packet_count(0),
+#endif
+       p_packet_function_(p_packet_function),
+       p_query_function_(p_query_function),
+       p_answer_function_(p_answer_function),
+       buffer_pointer(0),
+       data_buffer(data_buffer_),
+       max_packet_size(max_packet_size_)
        { };
 
   // Call this regularly to check for an incoming packet.
