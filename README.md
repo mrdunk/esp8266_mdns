@@ -25,6 +25,8 @@ Usage
 -----
 Find information on how to add a library to your Arduino IDE [here](https://www.arduino.cc/en/Guide/Libraries).
 
+The file [mdns.h](https://github.com/mrdunk/esp8266_mdns/blob/master/mdns.h) is well commented. Try looking there for information on specific methods.
+
 To add a simple mDNS listener to an Aruino sketch which will display all mDNS packets over the serial console try the following:
 
 ```
