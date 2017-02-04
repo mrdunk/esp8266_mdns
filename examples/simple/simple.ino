@@ -50,7 +50,7 @@ void setup() {
 
 unsigned int last_packet_count = 0;
 void loop() {
-  my_mdns.Check();
+  my_mdns.loop();
 
 #ifdef DEBUG_STATISTICS
   // Give feedback on the percentage of incoming mDNS packets that fitted in buffer.

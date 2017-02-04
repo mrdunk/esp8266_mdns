@@ -16,7 +16,7 @@ void PrintHex(const unsigned char data) {
   Serial.print(" ");
 }
 
-bool MDns::Check() {
+bool MDns::loop() {
   if (!init) {
     init = true;
     Serial.println("Initializing Multicast.");

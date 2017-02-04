@@ -106,7 +106,11 @@ class MDns {
        { };
 
   // Call this regularly to check for an incoming packet.
-  bool Check();
+  bool loop();
+  // Deprecated. Use loop() instead.
+  bool Check(){
+    return loop();
+  }
 
   // Send this MDns packet.
   void Send() const;

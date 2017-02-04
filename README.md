@@ -76,7 +76,7 @@ void setup() {
 }
 
 void loop() {
-  my_mdns.Check();
+  my_mdns.loop();
 }
 ```
 
