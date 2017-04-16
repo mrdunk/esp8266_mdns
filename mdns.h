@@ -62,6 +62,7 @@ typedef struct Answer{
 } Answer;
 
 class MDns {
+ private:
  public:
   // Simple constructor does not fire any callbacks on incoming data.
   // Default incoming data_buffer size is used.
@@ -77,9 +78,9 @@ class MDns {
   //   p_packet_function : Callback fires for every mDNS packet that arrives.
   //   p_query_function : Callback fires for every mDNS Query that arrives as part of a packet.
   //   p_answer_function : Callback fires for every mDNS Answer that arrives as part of a packet.
-  MDns(void(*p_packet_function)(const MDns*), 
-       void(*p_query_function)(const Query*), 
-       void(*p_answer_function)(const Answer*)) :
+  MDns(void (*p_packet_function)(const MDns*), 
+       void (*p_query_function)(const Query*), 
+       void (*p_answer_function)(const Answer*)) :
     MDns(p_packet_function, p_query_function, p_answer_function, MAX_PACKET_SIZE) { }
 
   // Constructor takes callbacks which fire when mDNS data arrives.
@@ -88,9 +89,9 @@ class MDns {
   //   p_query_function : Callback fires for every mDNS Query that arrives as part of a packet.
   //   p_answer_function : Callback fires for every mDNS Answer that arrives as part of a packet.
   //   max_packet_size_ : Set the data_buffer size allocated to store incoming packets.
-  MDns(void(*p_packet_function)(const MDns*), 
-       void(*p_query_function)(const Query*), 
-       void(*p_answer_function)(const Answer*),
+  MDns(void (*p_packet_function)(const MDns*), 
+       void (*p_query_function)(const Query*), 
+       void (*p_answer_function)(const Answer*),
        int max_packet_size_) :
 #ifdef DEBUG_STATISTICS
        buffer_size_fail(0),
@@ -101,8 +102,8 @@ class MDns {
        p_query_function_(p_query_function),
        p_answer_function_(p_answer_function),
        buffer_pointer(0),
-       max_packet_size(max_packet_size_),
-       data_buffer(new byte[max_packet_size_])
+       data_buffer(new byte[max_packet_size_]),
+       max_packet_size(max_packet_size_)
        { };
 
   // Constructor can be passed the buffer to hold the mDNS data.
@@ -112,9 +113,9 @@ class MDns {
   //   p_query_function : Callback fires for every mDNS Query that arrives as part of a packet.
   //   p_answer_function : Callback fires for every mDNS Answer that arrives as part of a packet.
   //   max_packet_size_ : Set the data_buffer size allocated to store incoming packets.
-  MDns(void(*p_packet_function)(const MDns*), 
-       void(*p_query_function)(const Query*), 
-       void(*p_answer_function)(const Answer*),
+  MDns(void (*p_packet_function)(const MDns*), 
+       void (*p_query_function)(const Query*), 
+       void (*p_answer_function)(const Answer*),
        byte* data_buffer_,
        int max_packet_size_) :
 #ifdef DEBUG_STATISTICS
@@ -179,26 +180,25 @@ class MDns {
   bool init;
 
   // Pointer to function that gets called for every incoming mDNS packet.
-  void(*p_packet_function_)(const MDns*);
+  void (*p_packet_function_)(const MDns*);
 
   // Pointer to function that gets called for every incoming query.
-  void(*p_query_function_)(const Query*);
+  void (*p_query_function_)(const Query*);
 
   // Pointer to function that gets called for every incoming answer.
-  void(*p_answer_function_)(const Answer*);
-
-  // Size of mDNS packet.
-  unsigned int data_size;
+  void (*p_answer_function_)(const Answer*);
 
   // Position in data_buffer while processing packet.
   unsigned int buffer_pointer;
 
+  // Buffer containing mDNS packet.
+  byte* data_buffer;
+
   // Buffer size for incoming MDns packet.
   unsigned int max_packet_size;
 
-  // Buffer containing mDNS packet.
-  //byte data_buffer[MAX_PACKET_SIZE];
-  byte* data_buffer;
+  // Size of mDNS packet.
+  unsigned int data_size;
 
   // Query or Answer
   bool type;

@@ -377,17 +377,18 @@ void MDns::Parse_Answer(Answer& answer) {
   buffer_pointer = nameFromDnsPointer(answer.name_buffer, 0, MAX_MDNS_NAME_LEN,
                                       data_buffer, buffer_pointer);
 
-  answer.rrtype = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+  answer.rrtype = (data_buffer[buffer_pointer++] << 8);
+  answer.rrtype += data_buffer[buffer_pointer++];
 
   byte rrclass_0 = data_buffer[buffer_pointer++];
   byte rrclass_1 = data_buffer[buffer_pointer++];
   answer.rrset = (0b10000000 & rrclass_0);
   answer.rrclass = ((rrclass_0 & 0b01111111) << 8) + rrclass_1;
 
-  answer.rrttl = (data_buffer[buffer_pointer++] << 24) +
-                       (data_buffer[buffer_pointer++] << 16) +
-                       (data_buffer[buffer_pointer++] << 8) +
-                       data_buffer[buffer_pointer++];
+  answer.rrttl = (data_buffer[buffer_pointer++] << 24);
+  answer.rrttl += (data_buffer[buffer_pointer++] << 16);
+  answer.rrttl += (data_buffer[buffer_pointer++] << 8);
+  answer.rrttl += data_buffer[buffer_pointer++];
   
   if (buffer_pointer > data_size) {
     // We've over-run the returned data.
@@ -440,18 +441,19 @@ void MDns::DisplayRawPacket() const {
 
 
 void MDns::PopulateAnswerResult(Answer* answer) {
-  int rdlength = (data_buffer[buffer_pointer++] << 8) + data_buffer[buffer_pointer++];
+  int rdlength = (data_buffer[buffer_pointer++] << 8);
+  rdlength += data_buffer[buffer_pointer++];
 
   switch (answer->rrtype) {
     case MDNS_TYPE_A:  // Returns a 32-bit IPv4 address
       if (MAX_MDNS_NAME_LEN >= 16) {
         sprintf(answer->rdata_buffer, "%u.%u.%u.%u",
-                data_buffer[buffer_pointer++], data_buffer[buffer_pointer++],
-                data_buffer[buffer_pointer++], data_buffer[buffer_pointer++]);
+                data_buffer[buffer_pointer], data_buffer[buffer_pointer +1],
+                data_buffer[buffer_pointer +2], data_buffer[buffer_pointer +3]);
       } else {
         sprintf(answer->rdata_buffer, "ipv4");
-        buffer_pointer += 4;
       }
+      buffer_pointer += 4;
       break;
     case MDNS_TYPE_PTR:  // Pointer to a canonical name.
       buffer_pointer = nameFromDnsPointer(answer->rdata_buffer, 0, MAX_MDNS_NAME_LEN,
@@ -482,12 +484,12 @@ void MDns::PopulateAnswerResult(Answer* answer) {
       break;
     case MDNS_TYPE_SRV:  // Server Selection.
       {
-        const unsigned int priority = (data_buffer[buffer_pointer++] << 8) +
-            data_buffer[buffer_pointer++];
-        const unsigned int weight = (data_buffer[buffer_pointer++] << 8) +
-            data_buffer[buffer_pointer++];
-        const unsigned int port = (data_buffer[buffer_pointer++] << 8) +
-            data_buffer[buffer_pointer++];
+        unsigned int priority = (data_buffer[buffer_pointer++] << 8);
+        priority += data_buffer[buffer_pointer++];
+        unsigned int weight = (data_buffer[buffer_pointer++] << 8);
+        weight += data_buffer[buffer_pointer++];
+        unsigned int port = (data_buffer[buffer_pointer++] << 8);
+        port += data_buffer[buffer_pointer++];
         sprintf(answer->rdata_buffer, "p=%u;w=%u;port=%u;host=", priority, weight, port);
 
         buffer_pointer = nameFromDnsPointer(answer->rdata_buffer, strlen(answer->rdata_buffer), 
