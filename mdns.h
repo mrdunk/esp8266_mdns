@@ -64,6 +64,9 @@ typedef struct Answer{
 class MDns {
  private:
  public:
+  // Whether UDP socket has not yet been initialised. 
+  bool init = false;
+  
   // Simple constructor does not fire any callbacks on incoming data.
   // Default incoming data_buffer size is used.
   MDns() : MDns(NULL, NULL, NULL, MAX_PACKET_SIZE) {}
@@ -78,9 +81,9 @@ class MDns {
   //   p_packet_function : Callback fires for every mDNS packet that arrives.
   //   p_query_function : Callback fires for every mDNS Query that arrives as part of a packet.
   //   p_answer_function : Callback fires for every mDNS Answer that arrives as part of a packet.
-  MDns(void (*p_packet_function)(const MDns*), 
-       void (*p_query_function)(const Query*), 
-       void (*p_answer_function)(const Answer*)) :
+  MDns(std::function<void(const MDns*)> p_packet_function, 
+       std::function<void(const Query*)> p_query_function, 
+       std::function<void(const Answer*)> p_answer_function) :
     MDns(p_packet_function, p_query_function, p_answer_function, MAX_PACKET_SIZE) { }
 
   // Constructor takes callbacks which fire when mDNS data arrives.
@@ -89,9 +92,9 @@ class MDns {
   //   p_query_function : Callback fires for every mDNS Query that arrives as part of a packet.
   //   p_answer_function : Callback fires for every mDNS Answer that arrives as part of a packet.
   //   max_packet_size_ : Set the data_buffer size allocated to store incoming packets.
-  MDns(void (*p_packet_function)(const MDns*), 
-       void (*p_query_function)(const Query*), 
-       void (*p_answer_function)(const Answer*),
+  MDns(std::function<void(const MDns*)> p_packet_function, 
+       std::function<void(const Query*)> p_query_function, 
+       std::function<void(const Answer*)> p_answer_function,
        int max_packet_size_) :
 #ifdef DEBUG_STATISTICS
        buffer_size_fail(0),
@@ -113,9 +116,9 @@ class MDns {
   //   p_query_function : Callback fires for every mDNS Query that arrives as part of a packet.
   //   p_answer_function : Callback fires for every mDNS Answer that arrives as part of a packet.
   //   max_packet_size_ : Set the data_buffer size allocated to store incoming packets.
-  MDns(void (*p_packet_function)(const MDns*), 
-       void (*p_query_function)(const Query*), 
-       void (*p_answer_function)(const Answer*),
+  MDns(std::function<void(const MDns*)> p_packet_function, 
+       std::function<void(const Query*)> p_query_function,
+       std::function<void(const Answer*)> p_answer_function,
        byte* data_buffer_,
        int max_packet_size_) :
 #ifdef DEBUG_STATISTICS
@@ -175,18 +178,15 @@ class MDns {
   void Parse_Answer(Answer& answer);
   unsigned int PopulateName(const char* name_buffer);
   void PopulateAnswerResult(Answer* answer);
-  
-  // Whether UDP socket has not yet been initialised. 
-  bool init;
 
   // Pointer to function that gets called for every incoming mDNS packet.
-  void (*p_packet_function_)(const MDns*);
+  std::function<void(const MDns*)> p_packet_function_;
 
   // Pointer to function that gets called for every incoming query.
-  void (*p_query_function_)(const Query*);
+  std::function<void(const Query*)> p_query_function_;
 
   // Pointer to function that gets called for every incoming answer.
-  void (*p_answer_function_)(const Answer*);
+  std::function<void(const Answer*)> p_answer_function_;
 
   // Position in data_buffer while processing packet.
   unsigned int buffer_pointer;
