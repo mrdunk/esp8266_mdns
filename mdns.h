@@ -134,6 +134,8 @@ class MDns {
        max_packet_size(max_packet_size_)
        { };
 
+  ~MDns();
+
   // Call this regularly to check for an incoming packet.
   bool loop();
   // Deprecated. Use loop() instead.
