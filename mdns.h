@@ -64,9 +64,6 @@ typedef struct Answer{
 class MDns {
  private:
  public:
-  // Whether UDP socket has not yet been initialised. 
-  bool init = false;
-  
   // Simple constructor does not fire any callbacks on incoming data.
   // Default incoming data_buffer size is used.
   MDns() : MDns(NULL, NULL, NULL, MAX_PACKET_SIZE) {}
@@ -135,6 +132,9 @@ class MDns {
        { };
 
   ~MDns();
+
+  // Initializes multicast
+  void begin();
 
   // Call this regularly to check for an incoming packet.
   bool loop();

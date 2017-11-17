@@ -16,12 +16,12 @@ void PrintHex(const unsigned char data) {
   Serial.print(" ");
 }
 
+void MDns::begin(){
+  Serial.println("Initializing Multicast.");
+  Udp.beginMulticast(WiFi.localIP(), IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT);
+}
+
 bool MDns::loop() {
-  if (!init) {
-    init = true;
-    Serial.println("Initializing Multicast.");
-    Udp.beginMulticast(WiFi.localIP(), IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT);
-  }
   data_size = Udp.parsePacket();
   if ( data_size > 12) {
     if(data_size > largest_packet_seen){
