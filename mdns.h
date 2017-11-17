@@ -104,7 +104,9 @@ class MDns {
        buffer_pointer(0),
        data_buffer(new byte[max_packet_size_]),
        max_packet_size(max_packet_size_)
-       { };
+       { 
+         this->startUdpMulticast();
+       };
 
   // Constructor can be passed the buffer to hold the mDNS data.
   // This way the potentially large buffer can be shared with other processes.
@@ -129,12 +131,11 @@ class MDns {
        buffer_pointer(0),
        data_buffer(data_buffer_),
        max_packet_size(max_packet_size_)
-       { };
+       { 
+         this->startUdpMulticast();
+       };
 
   ~MDns();
-
-  // Initializes multicast
-  void begin();
 
   // Call this regularly to check for an incoming packet.
   bool loop();
@@ -176,6 +177,9 @@ class MDns {
   unsigned int packet_count;
 #endif
  private:
+  // Initializes udp multicast
+  void startUdpMulticast();
+
   void Parse_Query(Query& query);
   void Parse_Answer(Answer& answer);
   unsigned int PopulateName(const char* name_buffer);

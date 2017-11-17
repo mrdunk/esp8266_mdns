@@ -16,7 +16,7 @@ void PrintHex(const unsigned char data) {
   Serial.print(" ");
 }
 
-void MDns::begin(){
+void MDns::startUdpMulticast(){
   Serial.println("Initializing Multicast.");
   Udp.beginMulticast(WiFi.localIP(), IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT);
 }
