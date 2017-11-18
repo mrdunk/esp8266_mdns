@@ -16,12 +16,12 @@ void PrintHex(const unsigned char data) {
   Serial.print(" ");
 }
 
+void MDns::startUdpMulticast(){
+  Serial.println("Initializing Multicast.");
+  Udp.beginMulticast(WiFi.localIP(), IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT);
+}
+
 bool MDns::loop() {
-  if (!init) {
-    init = true;
-    Serial.println("Initializing Multicast.");
-    Udp.beginMulticast(WiFi.localIP(), IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT);
-  }
   data_size = Udp.parsePacket();
   if ( data_size > 12) {
     if(data_size > largest_packet_seen){
@@ -38,7 +38,6 @@ bool MDns::loop() {
     // We've received a packet which is long enough to contain useful data so
     // read the data from it.
     Udp.read(data_buffer, data_size); // read the packet into the buffer
-
     // data_buffer[0] and data_buffer[1] contain the Query ID field which is unused in mDNS.
 
     // data_buffer[2] and data_buffer[3] are DNS flags which are mostly unused in mDNS.
@@ -511,6 +510,10 @@ void MDns::PopulateAnswerResult(Answer* answer) {
       break;
   }
 }
+
+MDns::~MDns(){
+  Udp.stop();
+};
 
 bool writeToBuffer(const byte value, char* p_name_buffer, int* p_name_buffer_pos,
                    const int name_buffer_len) {
