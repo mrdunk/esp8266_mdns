@@ -17,7 +17,9 @@ void PrintHex(const unsigned char data) {
 }
 
 void MDns::startUdpMulticast(){
+#ifdef DEBUG_OUTPUT
   Serial.println("Initializing Multicast.");
+#endif
   Udp.beginMulticast(WiFi.localIP(), IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT);
 }
 
@@ -300,8 +302,9 @@ bool MDns::AddAnswer(const Answer& answer) {
 }
 
 void MDns::Send() const {
+#ifdef DEBUG_OUTPUT
   Serial.println("Sending UDP multicast packet");
-
+#endif
   Udp.begin(MDNS_SOURCE_PORT);
   Udp.beginPacketMulticast(IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT, WiFi.localIP(), MDNS_TTL);
   Udp.write(data_buffer, data_size);
