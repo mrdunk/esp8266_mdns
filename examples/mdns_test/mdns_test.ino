@@ -165,6 +165,7 @@ void setup()
 
   Serial.println("Connected to wifi");
 
+  my_mdns.begin(); // call to startUdpMulticast
 
   // Query for all host information for a paticular service. ("_mqtt" in this case.)
   my_mdns.Clear();
