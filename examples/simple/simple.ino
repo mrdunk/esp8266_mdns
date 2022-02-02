@@ -46,6 +46,8 @@ void setup() {
   }
   printWifiStatus();
   Serial.println();
+
+  my_mdns.begin(); // call to startUdpMulticast
 }
 
 unsigned int last_packet_count = 0;

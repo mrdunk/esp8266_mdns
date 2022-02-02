@@ -105,7 +105,6 @@ class MDns {
        data_buffer(new byte[max_packet_size_]),
        max_packet_size(max_packet_size_)
        { 
-         this->startUdpMulticast();
        };
 
   // Constructor can be passed the buffer to hold the mDNS data.
@@ -132,10 +131,12 @@ class MDns {
        data_buffer(data_buffer_),
        max_packet_size(max_packet_size_)
        { 
-         this->startUdpMulticast();
        };
 
   ~MDns();
+
+// added to call startUdpMulticast
+void begin();
 
   // Call this regularly to check for an incoming packet.
   bool loop();

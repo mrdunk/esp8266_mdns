@@ -75,6 +75,8 @@ void setup() {
     }
   }
   Serial.println();
+
+  my_mdns.begin();
 }
 
 void loop() {
