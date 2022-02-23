@@ -17,9 +17,14 @@
 
 char hostname[] = "test.local"; // local hostname
 
+void queryCallback(const mdns::Query* query);
+
 bool queryRecv;
 IPAddress queryIP;
 bool queryUnicast;
+
+// Initialise MDns. We only need the query callback
+mdns::MDns my_mdns(NULL, queryCallback, NULL);
 
 // When an mDNS packet gets parsed this callback gets called once per Query.
 // This callback flags the query for an answer if the name matches the local hostname
@@ -30,20 +35,13 @@ void queryCallback(const mdns::Query* query){
     if(0==strcmp(query->qname_buffer,hostname)) {
       // query is for us
       Serial.println("Query matches hostname");
-      logQuery(query);
+      queryRecv = true;
+      queryIP = my_mdns.getRemoteIP();
+      queryUnicast = query->unicast_response;
     }
   }
 }
 
-// Initialise MDns. We only need the query callback
-mdns::MDns my_mdns(NULL, queryCallback, NULL);
-
-// move this code to avoid forward references to my_mdns
-void logQuery(const mdns::Query* query) {
-  queryRecv = true;
-  queryIP = my_mdns.getRemoteIP();
-  queryUnicast = query->unicast_response;
-}
 void setup() {
   Serial.begin(115200); // open serial port for messages
 
