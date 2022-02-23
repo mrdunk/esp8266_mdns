@@ -148,6 +148,9 @@ void begin();
   // Send this MDns packet.
   void Send() const;
 
+  // Send this MDns packet to a unicast address
+  void SendUnicast(IPAddress) const;
+
   // Resets everything to represent an empty packet.
   // Do this before building a packet for sending.
   void Clear();
@@ -164,6 +167,12 @@ void begin();
   
   // Display the raw packet in HEX and ASCII.
   void DisplayRawPacket() const;
+
+  // Get the source IP address of the packet
+  IPAddress getRemoteIP();
+
+  // Get the destination IP address of the packet (unicast or multicast)
+  IPAddress getDestinationIP();
  
 #ifdef DEBUG_STATISTICS
   // Counter gets increased every time an incoming mDNS packet arrives that does
@@ -221,6 +230,10 @@ void begin();
   
   unsigned int ns_count;
   unsigned int ar_count;
+
+  // source & destination IP for incoming UDP packet
+  IPAddress srcIP;
+  IPAddress destIP;
 };
 
 

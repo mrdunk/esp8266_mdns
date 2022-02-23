@@ -46,6 +46,9 @@ bool MDns::loop() {
 
     // We've received a packet which is long enough to contain useful data so
     // read the data from it.
+    // but first save the source and destination IP
+    srcIP = Udp.remoteIP();
+    destIP = Udp.destinationIP();
     Udp.read(data_buffer, data_size); // read the packet into the buffer
     // data_buffer[0] and data_buffer[1] contain the Query ID field which is unused in mDNS.
 
@@ -276,7 +279,7 @@ bool MDns::AddAnswer(const Answer& answer) {
 
   switch (answer.rrtype) {
     case MDNS_TYPE_A:  // Returns a 32-bit IPv4 address
-      if(buffer_pointer +4 >= data_size){ return false; }
+      if(buffer_pointer > data_size) { return false; }
       rdata_len = 4;
       data_buffer[buffer_pointer++] = answer.rdata_buffer[0];
       data_buffer[buffer_pointer++] = answer.rdata_buffer[1];
@@ -301,6 +304,7 @@ bool MDns::AddAnswer(const Answer& answer) {
   data_size = buffer_pointer;
   
   // Since the data fitted in the buffer, it's ok to update the header.
+  data_buffer[2] = 0b10000100;     // Answer & IQuery flags
   answer_count++;
   data_buffer[6] = (answer_count & 0xFF00) >> 8;
   data_buffer[7] = answer_count & 0xFF;
@@ -314,6 +318,15 @@ void MDns::Send() const {
 #endif
   Udp.begin(MDNS_SOURCE_PORT);
   Udp.beginPacketMulticast(IPAddress(224, 0, 0, 251), MDNS_TARGET_PORT, WiFi.localIP(), MDNS_TTL);
+  Udp.write(data_buffer, data_size);
+  Udp.endPacket();
+}
+
+void MDns::SendUnicast(IPAddress addr) const {
+#ifdef DEBUG_OUTPUT
+  Serial.println("Sending UDP unicast packet");
+#endif
+  Udp.beginPacket(addr,MDNS_TARGET_PORT);
   Udp.write(data_buffer, data_size);
   Udp.endPacket();
 }
@@ -519,6 +532,14 @@ void MDns::PopulateAnswerResult(Answer* answer) {
       }
       break;
   }
+}
+
+IPAddress MDns::getRemoteIP() {
+  return srcIP;
+}
+
+IPAddress MDns::getDestinationIP() {
+  return destIP;
 }
 
 MDns::~MDns(){
